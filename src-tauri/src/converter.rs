@@ -53,8 +53,9 @@ mod win_com {
         Win32::System::Com::{
             CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize,
             CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_FLAGS, DISPATCH_METHOD,
-            DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch, VARIANT, VARIANT_BOOL,
+            DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
         },
+        Win32::System::Ole::{VARIANT, VARIANT_BOOL},
     };
 
     // Raw VT_ values to avoid VARENUM newtype conversions
