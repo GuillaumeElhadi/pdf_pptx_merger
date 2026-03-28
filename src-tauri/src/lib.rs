@@ -1,5 +1,4 @@
 mod converter;
-mod merger;
 mod splitter;
 mod temp;
 
@@ -16,9 +15,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             converter::convert_pptx,
-            splitter::split_pdf_into_pages,
             splitter::get_pdf_page_count,
-            merger::merge_pdfs,
             temp::get_temp_dir,
         ])
         .run(tauri::generate_context!())

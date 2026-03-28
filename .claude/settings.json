@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // \"\"' | { read -r f; echo \"$f\" | grep -qE '\\.rs$' && (cd /Users/guillaume.elhadi/Developer/pdf_pptx_merger/src-tauri && cargo check 2>&1 | tail -20); } 2>/dev/null || true",
+            "timeout": 60,
+            "statusMessage": "cargo check…"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // \"\"' | { read -r f; echo \"$f\" | grep -qE '\\.(ts|tsx)$' && (cd /Users/guillaume.elhadi/Developer/pdf_pptx_merger && npx tsc --noEmit 2>&1 | tail -20); } 2>/dev/null || true",
+            "timeout": 60,
+            "statusMessage": "tsc --noEmit…"
+          }
+        ]
+      }
+    ]
+  }
+}

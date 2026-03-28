@@ -4,13 +4,14 @@ type State = "available" | "selected" | "used";
 
 interface Props {
   pdfPath: string | null;
+  pageIndex: number;
   slideNumber: number; // 1-based for display
   state: State;
   onToggle: () => void;
 }
 
-export function SlideThumb({ pdfPath, slideNumber, state, onToggle }: Props) {
-  const { url, loading } = useThumbnail(pdfPath, 0, 160);
+export function SlideThumb({ pdfPath, pageIndex, slideNumber, state, onToggle }: Props) {
+  const { url, loading } = useThumbnail(pdfPath, pageIndex, 160);
   const disabled = state === "used";
 
   return (

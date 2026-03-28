@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function SlideGroupItemRow({ item }: Props) {
-  const { slidePdfs, removeItem } = useMergeStore();
+  const { slidePdf, removeItem } = useMergeStore();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
 
@@ -44,7 +44,7 @@ export function SlideGroupItemRow({ item }: Props) {
 
       <div style={styles.thumbStrip}>
         {item.slideIndices.slice(0, 4).map((idx) => (
-          <MiniThumb key={idx} pdfPath={slidePdfs[idx] ?? null} />
+          <MiniThumb key={idx} pdfPath={slidePdf} pageIndex={idx} />
         ))}
         {item.slideIndices.length > 4 && (
           <span style={styles.more}>+{item.slideIndices.length - 4}</span>
@@ -67,8 +67,8 @@ export function SlideGroupItemRow({ item }: Props) {
   );
 }
 
-function MiniThumb({ pdfPath }: { pdfPath: string | null }) {
-  const { url, loading } = useThumbnail(pdfPath, 0, 48);
+function MiniThumb({ pdfPath, pageIndex }: { pdfPath: string | null; pageIndex: number }) {
+  const { url, loading } = useThumbnail(pdfPath, pageIndex, 48);
   return (
     <div style={styles.thumb}>
       {loading && <div style={styles.thumbPlaceholder} />}

@@ -4,71 +4,91 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Does
 
-A Windows desktop application that merges multiple PDF files with PowerPoint slides interspersed between them into a single PDF output. Built with Tkinter for GUI, requires Microsoft PowerPoint (via COM) and Poppler to be installed on the system.
+A cross-platform desktop application (primary target: Windows) that merges multiple PDF files with PowerPoint slides interspersed between them into a single PDF output. Built with **Tauri v2** (Rust backend) and **React + TypeScript** (frontend).
 
 ## Development Commands
 
-**Setup:**
+**Install dependencies:**
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+npm install
 ```
 
 **Run in development:**
 ```bash
-.venv\Scripts\activate
-python app.py
+npm run tauri dev
 ```
 
-**Build standalone EXE:**
+**Type-check frontend only:**
 ```bash
-.venv\Scripts\activate
-pyinstaller pdf_pptx_merger.spec
-# Output: dist\PDFPPTXMerger.exe
+npx tsc --noEmit
 ```
 
-**System requirements (Windows only):**
-- Microsoft PowerPoint installed (used via COM for PPTX→PDF conversion)
-- Poppler for Windows extracted to `C:\poppler\`, with `C:\poppler\Library\bin` in PATH
+**Check Rust backend only:**
+```bash
+cd src-tauri && cargo check
+```
+
+**Build:**
+```bash
+npm run tauri build
+```
+
+**System requirements:**
+- Windows: Microsoft PowerPoint installed (used via COM through PowerShell for PPTX→PDF conversion)
+- macOS (dev/testing only): LibreOffice installed — note fidelity differs from PowerPoint output
 
 ## Architecture
 
-All application logic lives in a single file: `app.py` (~628 lines).
+### Frontend — `src/`
 
-**Core functions:**
-- `convert_pptx_to_pdf(pptx_path, output_pdf_path)` — uses `pywin32`/`comtypes` to invoke `PowerPoint.Application` via COM
-- `split_pdf_into_pages(pdf_path, output_dir)` — splits a PDF into one file per page using `pypdf`
-- `render_pdf_page_as_image(pdf_path, page_index, size)` — renders a PDF page as a Tkinter image using `pdf2image` + Poppler
+| File | Role |
+|---|---|
+| `src/store/useMergeStore.ts` | Central Zustand store — all app state and async actions |
+| `src/services/bridge.ts` | Thin wrapper over Tauri `invoke` + dialog plugins |
+| `src/services/pdfRenderer.ts` | PDF thumbnail rendering via pdf.js |
+| `src/hooks/useThumbnail.ts` | React hook for on-demand thumbnail loading |
+| `src/types/index.ts` | Shared types: `MergeItem`, `PdfItem`, `SlideGroupItem`, `AppStatus` |
+| `src/components/` | UI components (MergeList, SlidePicker, TopBar, StatusBar) |
 
-**UI classes:**
-- `ThumbnailButton` — clickable thumbnail widget with selection highlight
-- `PDFSlot` — represents one PDF in the merge list with move/remove controls
-- `SlidePickerDialog` — modal dialog to pick which slide to insert between two PDFs
-- `App` — main window; holds all application state
-
-**Application state (on `App`):**
-- `pptx_path` — path to loaded PPTX file
-- `slide_pdfs` — list of per-slide PDF paths (one per PPTX slide, stored in temp dir)
-- `pdf_slots` — ordered list of user-loaded PDF paths
-- `intercalaires` — parallel list to `pdf_slots`; each entry is either a slide index or `None` (slide to insert *after* that PDF)
+**State model (in `useMergeStore`):**
+- `pptxPath` — path to loaded PPTX
+- `slidePdfs` — array of per-slide PDF paths in temp dir (index = 0-based slide number)
+- `usedSlideIndices` — Set of slide indices already assigned to a group (prevents reuse)
+- `items` — ordered flat list of `MergeItem` (either `PdfItem` or `SlideGroupItem`)
 
 **Data flow:**
-1. User loads PPTX → async thread converts via COM → splits into per-slide PDFs → thumbnails rendered on demand
-2. User adds PDFs → appended to `pdf_slots`, `None` appended to `intercalaires`
-3. User clicks intercalaire button → `SlidePickerDialog` opens → stores chosen slide index
-4. User generates → async thread iterates `pdf_slots`, interleaves selected slides, writes merged PDF via `pypdf.PdfWriter`
+1. User loads PPTX → `Bridge.convertPptx()` → `Bridge.splitPdfIntoPages()` → `slidePdfs` populated
+2. User adds PDFs → appended to `items` as `PdfItem`
+3. User adds a slide group → `SlideGroupItem` appended to `items`, indices added to `usedSlideIndices`
+4. User generates → store builds flat list of page paths → `Bridge.mergePdfs()` → output PDF written
 
-**Threading:** Long operations (PPTX conversion, PDF generation) run in `threading.Thread` to keep the UI responsive. UI updates from threads go through `self.after()`.
+### Backend — `src-tauri/src/`
 
-**Temp directory:** Created at startup via `tempfile.mkdtemp()`, cleaned up in `_on_close()`.
+| File | Role |
+|---|---|
+| `converter.rs` | PPTX→PDF via PowerShell/COM (Windows) or LibreOffice (macOS) |
+| `splitter.rs` | PDF split into single-page files using lopdf; also page count query |
+| `merger.rs` | Merges an ordered list of PDF paths into one output PDF using lopdf |
+| `temp.rs` | Manages the app temp directory (created at startup, cleaned on exit) |
+| `lib.rs` | Tauri builder — registers all commands and plugins |
 
-## Build System
+**Tauri commands exposed:**
+- `convert_pptx(pptx_path)` → `String` (path to merged PDF)
+- `split_pdf_into_pages(pdf_path)` → `Vec<String>` (ordered page paths)
+- `get_pdf_page_count(pdf_path)` → `usize`
+- `merge_pdfs(page_paths, output_path)` → `()`
+- `get_temp_dir()` → `String`
 
-`pdf_pptx_merger.spec` is the PyInstaller spec file. It:
-- Bundles Poppler DLLs/EXEs as `binaries`
-- Uses a runtime hook (`hooks/hook-poppler.py`) to set `POPPLER_PATH` at runtime
-- Sets `console=False` (no terminal window)
-- Declares hidden imports for `comtypes` and `win32com`
+**Key implementation notes:**
+- PDF manipulation is done with `lopdf` (pure Rust, no external binaries needed for merge/split)
+- `splitter.rs` implements full object-dependency graph traversal (`collect_deps`) to correctly isolate each page including inherited Resources and MediaBox
+- `merger.rs` remaps all object IDs when merging to avoid collisions across source documents
+- All three heavy commands (`convert_pptx`, `split_pdf_into_pages`, `merge_pdfs`) call blocking I/O inside `async fn` — they should use `tokio::task::spawn_blocking` (known issue)
 
-The CI workflow (`.github/workflows/build.yml`) patches the spec file with the correct Poppler path before building, then uploads the EXE to GitHub Releases on release events.
+## Known Issues / Tech Debt
+
+- **Blocking async**: `Command::output()` and synchronous lopdf I/O run directly in `async fn` — can block the Tauri runtime on large files
+- **No streaming progress**: long operations report only a binary status string, no N/total progress
+- **Slide reuse blocked**: `usedSlideIndices` prevents the same slide from appearing in multiple groups (intentional UX constraint, but limits flexibility)
+- **Stale temp files**: reloading a PPTX with fewer slides leaves orphaned `slide_XXXX.pdf` files in temp
+- **macOS fidelity**: LibreOffice conversion produces different rendering than PowerPoint (font substitution, layout shifts)
