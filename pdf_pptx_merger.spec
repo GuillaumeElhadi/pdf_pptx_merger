@@ -28,25 +28,20 @@ poppler_binaries = [
     if p.suffix.lower() in (".dll", ".exe")
 ]
 
-# ── Runtime hook : redirige pdf2image vers les binaires embarqués ─────────────
-# Ce fichier sera exécuté avant app.py au démarrage de l'exe.
-runtime_hook_content = r"""
-import os
-import sys
-
-# Quand PyInstaller extrait les fichiers, ils sont dans sys._MEIPASS
-# On expose le sous-dossier poppler_bin comme chemin Poppler.
-if hasattr(sys, '_MEIPASS'):
-    poppler_dir = os.path.join(sys._MEIPASS, 'poppler_bin')
-    # pdf2image accepte poppler_path en argument, mais on injecte aussi dans PATH
-    # pour les cas où d'autres outils le cherchent directement.
-    os.environ['PATH'] = poppler_dir + os.pathsep + os.environ.get('PATH', '')
-    # Variable lue par notre app.py pour passer à pdf2image explicitement
-    os.environ['POPPLER_PATH'] = poppler_dir
-"""
+# Runtime hook: redirect pdf2image to embedded Poppler binaries
+# Written as plain ASCII to avoid encoding issues on Windows runners
+runtime_hook_content = (
+    "import os\n"
+    "import sys\n"
+    "\n"
+    "if hasattr(sys, '_MEIPASS'):\n"
+    "    poppler_dir = os.path.join(sys._MEIPASS, 'poppler_bin')\n"
+    "    os.environ['PATH'] = poppler_dir + os.pathsep + os.environ.get('PATH', '')\n"
+    "    os.environ['POPPLER_PATH'] = poppler_dir\n"
+)
 
 runtime_hook_path = "runtime_hook_poppler.py"
-with open(runtime_hook_path, "w") as f:
+with open(runtime_hook_path, "w", encoding="utf-8") as f:
     f.write(runtime_hook_content)
 
 # ─────────────────────────────────────────────────────────────────────────────
