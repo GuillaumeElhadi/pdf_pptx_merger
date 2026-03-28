@@ -1,14 +1,19 @@
 import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 import { arrayMove } from "@dnd-kit/sortable";
+import { PDFDocument, PDFPage } from "pdf-lib";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import { Bridge } from "../services/bridge";
 import type { AppStatus, MergeItem, PdfItem, SlideGroupItem } from "../types";
 
 interface MergeStore {
   // ── PPTX state ────────────────────────────────────────────────────────────
   pptxPath: string | null;
-  /** One temp PDF path per slide (index = slide number, 0-based). */
-  slidePdfs: string[];
+  /** Path to the single merged PDF produced from the PPTX. */
+  slidePdf: string | null;
+  /** Total number of slides available (= pages in slidePdf). */
+  slideCount: number;
   /** Slide indices already assigned to a group — cannot be reused. */
   usedSlideIndices: Set<number>;
 
@@ -33,7 +38,8 @@ interface MergeStore {
 
 export const useMergeStore = create<MergeStore>((set, get) => ({
   pptxPath: null,
-  slidePdfs: [],
+  slidePdf: null,
+  slideCount: 0,
   usedSlideIndices: new Set(),
   items: [],
   status: "idle",
@@ -57,26 +63,28 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       status: "converting",
       statusMessage: "Converting PPTX via PowerPoint…",
       pptxPath: path,
-      // Remove all existing slide groups, keep PDFs
       items: get().items.filter((i) => i.type === "pdf"),
       usedSlideIndices: new Set(),
-      slidePdfs: [],
+      slidePdf: null,
+      slideCount: 0,
     });
 
     try {
       const mergedPdf = await Bridge.convertPptx(path);
-      const pages = await Bridge.splitPdfIntoPages(mergedPdf);
+      const count = await Bridge.getPdfPageCount(mergedPdf);
       set({
-        slidePdfs: pages,
+        slidePdf: mergedPdf,
+        slideCount: count,
         status: "idle",
-        statusMessage: `PPTX loaded — ${pages.length} slide${pages.length !== 1 ? "s" : ""} available.`,
+        statusMessage: `PPTX loaded — ${count} slide${count !== 1 ? "s" : ""} available.`,
       });
     } catch (e) {
       set({
         status: "error",
         statusMessage: String(e),
         pptxPath: null,
-        slidePdfs: [],
+        slidePdf: null,
+        slideCount: 0,
       });
     }
   },
@@ -159,40 +167,63 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
   // ── generate ─────────────────────────────────────────────────────────────
   generate: async () => {
-    const { items, slidePdfs, lastOutputPath } = get();
+    const { items, slidePdf, lastOutputPath } = get();
     const hasPdf = items.some((i) => i.type === "pdf");
     if (!hasPdf) return;
 
     let outputPath = await Bridge.pickSaveLocation();
-    // On macOS the replace-confirmation sheet can return null — fall back to last used path
     if (!outputPath) {
       if (lastOutputPath) {
+        const reuse = confirm(`Re-use previous output file?\n${lastOutputPath}`);
+        if (!reuse) return;
         outputPath = lastOutputPath;
       } else {
         return;
       }
     }
 
-    set({ status: "merging", statusMessage: "Resolving pages…" });
+    set({ status: "merging", statusMessage: "Preparing merge…" });
 
     try {
-      // Build the flat ordered list of single-page PDF paths
-      const pagePaths: string[] = [];
+      const merged = await PDFDocument.create();
+
+      // Cache loaded source documents to avoid re-reading large files
+      const docCache = new Map<string, PDFDocument>();
+      const loadDoc = async (path: string): Promise<PDFDocument> => {
+        const cached = docCache.get(path);
+        if (cached) return cached;
+        const res = await fetch(convertFileSrc(path));
+        const bytes = await res.arrayBuffer();
+        const doc = await PDFDocument.load(bytes);
+        docCache.set(path, doc);
+        return doc;
+      };
+
+      let processed = 0;
+      const total = items.reduce(
+        (n, item) =>
+          item.type === "pdf" ? n + 1 : n + item.slideIndices.length,
+        0
+      );
 
       for (const item of items) {
         if (item.type === "pdf") {
-          // Pass the PDF directly — merger.rs handles multi-page documents
-          pagePaths.push(item.pdfPath);
+          const doc = await loadDoc(item.pdfPath);
+          const pages = await merged.copyPages(doc, doc.getPageIndices());
+          pages.forEach((p: PDFPage) => merged.addPage(p));
+          processed += 1;
         } else {
-          // Map each slide index to its pre-split temp PDF
-          for (const idx of item.slideIndices) {
-            if (slidePdfs[idx]) pagePaths.push(slidePdfs[idx]);
-          }
+          if (!slidePdf) continue;
+          const doc = await loadDoc(slidePdf);
+          const pages = await merged.copyPages(doc, item.slideIndices);
+          pages.forEach((p: PDFPage) => merged.addPage(p));
+          processed += item.slideIndices.length;
         }
+        set({ statusMessage: `Merging… ${processed}/${total}` });
       }
 
-      set({ statusMessage: `Merging ${pagePaths.length} pages…` });
-      await Bridge.mergePdfs(pagePaths, outputPath);
+      const bytes = await merged.save();
+      await writeFile(outputPath, bytes);
 
       set({
         status: "idle",

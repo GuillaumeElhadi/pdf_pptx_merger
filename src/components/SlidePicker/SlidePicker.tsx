@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function SlidePicker({ mode, editId, onClose }: Props) {
-  const { slidePdfs, usedSlideIndices, items, addSlideGroup, updateSlideGroup } =
+  const { slidePdf, slideCount, usedSlideIndices, items, addSlideGroup, updateSlideGroup } =
     useMergeStore();
 
   // Pre-fill selection when editing
@@ -60,10 +60,11 @@ export function SlidePicker({ mode, editId, onClose }: Props) {
         </h2>
 
         <div style={styles.grid}>
-          {slidePdfs.map((pdf, idx) => (
+          {Array.from({ length: slideCount }, (_, idx) => (
             <SlideThumb
               key={idx}
-              pdfPath={pdf}
+              pdfPath={slidePdf}
+              pageIndex={idx}
               slideNumber={idx + 1}
               state={getState(idx)}
               onToggle={() => toggle(idx)}

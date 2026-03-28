@@ -4,7 +4,7 @@ use std::process::Command;
 use crate::temp;
 
 /// Converts a PPTX file to PDF and returns the output PDF path.
-/// - Windows: uses PowerShell to drive PowerPoint via COM
+/// - Windows: drives PowerPoint via COM using windows-rs (no PowerShell dependency)
 /// - macOS/Linux: uses LibreOffice (dev/testing only)
 #[tauri::command]
 pub async fn convert_pptx(pptx_path: String) -> Result<String, String> {
@@ -18,69 +18,228 @@ pub async fn convert_pptx(pptx_path: String) -> Result<String, String> {
         .to_string_lossy()
         .to_string();
 
-    #[cfg(target_os = "windows")]
-    convert_via_powershell(&pptx_path, &out_pdf)?;
+    // Spawn a dedicated thread so the COM STA apartment is properly scoped
+    // and does not interfere with Tokio's thread pool.
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
+    let pptx_clone = pptx_path.clone();
+    let out_pdf_clone = out_pdf.clone();
 
-    #[cfg(not(target_os = "windows"))]
-    convert_via_libreoffice(&pptx_path, &out_pdf)?;
+    std::thread::spawn(move || {
+        #[cfg(target_os = "windows")]
+        let result = win_com::convert(&pptx_clone, &out_pdf_clone);
 
-    Ok(out_pdf)
+        #[cfg(not(target_os = "windows"))]
+        let result = convert_via_libreoffice(&pptx_clone, &out_pdf_clone);
+
+        tx.send(result).ok();
+    });
+
+    tokio::task::spawn_blocking(move || {
+        rx.recv().unwrap_or_else(|_| Err("Conversion thread panicked".to_string()))
+    })
+    .await
+    .map_err(|e| format!("Thread join error: {e}"))?
+    .map(|_| out_pdf)
 }
+
+// ── Windows: COM automation via windows-rs ────────────────────────────────────
 
 #[cfg(target_os = "windows")]
-fn convert_via_powershell(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
-    // Normalise paths to backslashes for PowerShell
-    let pptx_abs = std::path::Path::new(pptx_path)
-        .canonicalize()
-        .map_err(|e| e.to_string())?
-        .to_string_lossy()
-        .to_string();
-    let pdf_abs = std::path::Path::new(out_pdf)
-        .parent()
-        .ok_or("invalid output path")?
-        .join(std::path::Path::new(out_pdf).file_name().unwrap())
-        .to_string_lossy()
-        .to_string();
+mod win_com {
+    use std::mem::ManuallyDrop;
+    use windows::{
+        core::{BSTR, GUID, PCWSTR},
+        Win32::System::Com::{
+            CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize,
+            CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_FLAGS, DISPATCH_METHOD,
+            DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
+        },
+        Win32::System::Ole::VariantClear,
+        Win32::System::Variant::{VARIANT, VARIANT_BOOL},
+    };
 
-    let script = format!(
-        r#"
-$ErrorActionPreference = 'Stop'
-$ppt = New-Object -ComObject PowerPoint.Application
-$ppt.Visible = [Microsoft.Office.Core.MsoTriState]::msoFalse
-try {{
-    $pres = $ppt.Presentations.Open('{pptx}', $true, $false, $false)
-    $pres.SaveAs('{pdf}', 32)
-    $pres.Close()
-}} finally {{
-    $ppt.Quit()
-    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($ppt) | Out-Null
-}}
-"#,
-        pptx = pptx_abs.replace('\'', "''"),
-        pdf = pdf_abs.replace('\'', "''"),
-    );
+    // Raw VT_ values to avoid VARENUM newtype conversions
+    const VT_BSTR: u16 = 8;
+    const VT_I4: u16 = 3;
+    const VT_BOOL: u16 = 11;
+    const VT_DISPATCH: u16 = 9;
 
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .map_err(|e| format!("Failed to launch PowerShell: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "PowerPoint conversion failed.\n\
-             Make sure Microsoft PowerPoint is installed.\n\
-             Details: {stderr}"
-        ));
+    /// Entry point — initialises a COM STA apartment, drives PowerPoint, then
+    /// uninitialises. Called from a dedicated std::thread to keep the apartment
+    /// separate from Tokio's thread pool.
+    pub fn convert(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
+        unsafe {
+            match CoInitializeEx(None, COINIT_APARTMENTTHREADED) {
+                Ok(()) => {}
+                Err(e) => {
+                    // 0x80010106 = RPC_E_CHANGED_MODE: thread already initialised
+                    // with a different model — continue anyway.
+                    if e.code().0 as u32 != 0x8001_0106 {
+                        return Err(format!("COM init failed: {e}"));
+                    }
+                }
+            }
+            let result = do_convert(pptx_path, out_pdf);
+            CoUninitialize();
+            result
+        }
     }
-    Ok(())
+
+    unsafe fn do_convert(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
+        // CLSIDFromProgID fails immediately if PowerPoint is not registered —
+        // gives a clear error before attempting to launch anything.
+        let clsid = CLSIDFromProgID(windows::core::w!("PowerPoint.Application")).map_err(|_| {
+            "Microsoft PowerPoint is not installed on this system.\n\
+             Please install Microsoft Office with PowerPoint to use this feature."
+                .to_string()
+        })?;
+
+        let app: IDispatch = CoCreateInstance(&clsid, None, CLSCTX_LOCAL_SERVER)
+            .map_err(|e| format!("Failed to start PowerPoint: {e}"))?;
+
+        // app.Presentations
+        let presentations = prop_get(&app, "Presentations")?;
+
+        // Presentations.Open(FileName, ReadOnly=True, Untitled=False, WithWindow=False)
+        // COM Invoke args are REVERSED: last parameter is at index 0.
+        let mut open_args = [
+            make_bool(false),      // WithWindow  [param 4 → index 0]
+            make_bool(false),      // Untitled    [param 3 → index 1]
+            make_bool(true),       // ReadOnly    [param 2 → index 2]
+            make_bstr(pptx_path),  // FileName    [param 1 → index 3]
+        ];
+        let pres = method_to_disp(&presentations, "Open", &mut open_args)?;
+
+        // pres.SaveAs(FileName, FileFormat=32 /* ppSaveAsPDF */)
+        let mut save_args = [
+            make_i4(32),        // FileFormat  [param 2 → index 0]
+            make_bstr(out_pdf), // FileName    [param 1 → index 1]
+        ];
+        invoke_void(&pres, "SaveAs", &mut save_args)?;
+
+        invoke_void(&pres, "Close", &mut [])?;
+        invoke_void(&app, "Quit", &mut [])?;
+
+        // Free the BSTRs we allocated as arguments
+        for v in open_args.iter_mut().chain(save_args.iter_mut()) {
+            let _ = VariantClear(v);
+        }
+
+        Ok(())
+    }
+
+    // ── Dispatch helpers ──────────────────────────────────────────────────────
+
+    unsafe fn get_dispid(obj: &IDispatch, name: &str) -> Result<i32, String> {
+        let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+        let ptr = PCWSTR(wide.as_ptr());
+        let mut id = 0i32;
+        obj.GetIDsOfNames(&GUID::zeroed(), &ptr, 1, 0x0409, &mut id)
+            .map_err(|e| format!("'{name}' not found on COM object: {e}"))?;
+        Ok(id)
+    }
+
+    unsafe fn invoke_impl(
+        obj: &IDispatch,
+        name: &str,
+        flags: DISPATCH_FLAGS,
+        args: &mut [VARIANT],
+    ) -> Result<VARIANT, String> {
+        let id = get_dispid(obj, name)?;
+        let params = DISPPARAMS {
+            rgvarg: if args.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                args.as_mut_ptr()
+            },
+            rgdispidNamedArgs: std::ptr::null_mut(),
+            cArgs: args.len() as u32,
+            cNamedArgs: 0,
+        };
+        let mut result = VARIANT::default();
+        obj.Invoke(
+            id,
+            &GUID::zeroed(),
+            0x0409,
+            flags,
+            &params,
+            Some(&mut result),
+            None,
+            None,
+        )
+        .map_err(|e| format!("Invoke '{name}': {e}"))?;
+        Ok(result)
+    }
+
+    unsafe fn prop_get(obj: &IDispatch, name: &str) -> Result<IDispatch, String> {
+        let mut result = invoke_impl(obj, name, DISPATCH_PROPERTYGET, &mut [])?;
+        extract_disp(&mut result, name)
+    }
+
+    unsafe fn method_to_disp(
+        obj: &IDispatch,
+        name: &str,
+        args: &mut [VARIANT],
+    ) -> Result<IDispatch, String> {
+        let mut result = invoke_impl(obj, name, DISPATCH_METHOD, args)?;
+        extract_disp(&mut result, name)
+    }
+
+    unsafe fn invoke_void(
+        obj: &IDispatch,
+        name: &str,
+        args: &mut [VARIANT],
+    ) -> Result<(), String> {
+        let mut result = invoke_impl(obj, name, DISPATCH_METHOD, args)?;
+        let _ = VariantClear(&mut result);
+        Ok(())
+    }
+
+    /// Extract an IDispatch from a VARIANT, taking ownership (AddRef via clone,
+    /// then VariantClear releases the original reference — net: 0).
+    unsafe fn extract_disp(result: &mut VARIANT, ctx: &str) -> Result<IDispatch, String> {
+        if result.Anonymous.Anonymous.vt != VT_DISPATCH {
+            let _ = VariantClear(result);
+            return Err(format!("'{ctx}' did not return a COM dispatch object"));
+        }
+        let disp = (&*result.Anonymous.Anonymous.Anonymous.pdispVal)
+            .as_ref()
+            .ok_or_else(|| format!("'{ctx}' returned null"))?
+            .clone(); // AddRef
+        let _ = VariantClear(result); // Release original reference
+        Ok(disp)
+    }
+
+    // ── VARIANT constructors ──────────────────────────────────────────────────
+
+    unsafe fn make_bstr(s: &str) -> VARIANT {
+        let mut v = VARIANT::default();
+        v.Anonymous.Anonymous.vt = VT_BSTR;
+        v.Anonymous.Anonymous.Anonymous.bstrVal = ManuallyDrop::new(BSTR::from(s));
+        v
+    }
+
+    unsafe fn make_i4(n: i32) -> VARIANT {
+        let mut v = VARIANT::default();
+        v.Anonymous.Anonymous.vt = VT_I4;
+        v.Anonymous.Anonymous.Anonymous.lVal = n;
+        v
+    }
+
+    unsafe fn make_bool(b: bool) -> VARIANT {
+        let mut v = VARIANT::default();
+        v.Anonymous.Anonymous.vt = VT_BOOL;
+        v.Anonymous.Anonymous.Anonymous.boolVal = VARIANT_BOOL(if b { -1 } else { 0 });
+        v
+    }
 }
+
+// ── macOS / Linux: LibreOffice (dev only) ─────────────────────────────────────
 
 #[cfg(not(target_os = "windows"))]
 fn convert_via_libreoffice(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
     let out_dir = temp::get().to_string_lossy().to_string();
 
-    // Locate the soffice binary: check PATH first, then the standard macOS app bundle.
     let soffice = ["libreoffice", "soffice"]
         .iter()
         .find_map(|cmd| which_cmd(cmd))
@@ -102,14 +261,13 @@ fn convert_via_libreoffice(pptx_path: &str, out_pdf: &str) -> Result<(), String>
             pptx_path,
         ])
         .output()
-        .map_err(|e| format!("Failed to launch LibreOffice ({soffice}): {e}"))? ;
+        .map_err(|e| format!("Failed to launch LibreOffice ({soffice}): {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("LibreOffice conversion failed: {stderr}"));
     }
 
-    // LibreOffice writes <stem>.pdf in the outdir — rename it to our expected path
     let stem = std::path::Path::new(pptx_path)
         .file_stem()
         .unwrap_or_default()
@@ -121,7 +279,6 @@ fn convert_via_libreoffice(pptx_path: &str, out_pdf: &str) -> Result<(), String>
     Ok(())
 }
 
-/// Returns the full path of `cmd` if it is findable on PATH, otherwise None.
 #[cfg(not(target_os = "windows"))]
 fn which_cmd(cmd: &str) -> Option<String> {
     Command::new("which")

@@ -1,13 +1,13 @@
 import { useMergeStore } from "../../store/useMergeStore";
 
 export function TopBar() {
-  const { pptxPath, slidePdfs, items, status, loadPptx, addPdfs } =
+  const { pptxPath, slideCount, items, status, loadPptx, addPdfs } =
     useMergeStore();
 
   const isConverting = status === "converting";
   const isMerging = status === "merging";
   const busy = isConverting || isMerging;
-  const hasPptx = slidePdfs.length > 0;
+  const hasPptx = slideCount > 0;
   const hasPdf = items.some((i) => i.type === "pdf");
 
   const handleAddSlideGroup = () => {

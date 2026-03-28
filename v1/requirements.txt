@@ -1,5 +1,0 @@
-pypdf>=4.0.0
-Pillow>=10.0.0
-pdf2image>=1.16.0
-pywin32>=306
-comtypes>=1.4.0
