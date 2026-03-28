@@ -55,7 +55,7 @@ mod win_com {
             CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_FLAGS, DISPATCH_METHOD,
             DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
         },
-        Win32::System::Ole::{VARIANT, VARIANT_BOOL},
+        Win32::System::Variant::{VARIANT, VARIANT_BOOL},
     };
 
     // Raw VT_ values to avoid VARENUM newtype conversions
@@ -82,14 +82,14 @@ mod win_com {
     /// separate from Tokio's thread pool.
     pub fn convert(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
         unsafe {
-            // CoInitializeEx returns HRESULT directly (S_OK, S_FALSE, or error).
+            // In windows-rs 0.52, CoInitializeEx returns windows_core::Result<()>.
+            // S_OK and S_FALSE (already initialized, same model) both become Ok(()).
             // 0x80010106 = RPC_E_CHANGED_MODE: thread already initialised with a
             // different apartment model — safe to continue.
-            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-            if let Err(e) = hr.ok() {
-                if hr.0 as u32 != 0x8001_0106 {
-                    return Err(format!("COM init failed: {e}"));
-                }
+            match CoInitializeEx(None, COINIT_APARTMENTTHREADED) {
+                Ok(()) => {}
+                Err(e) if e.code().0 as u32 == 0x8001_0106 => {}
+                Err(e) => return Err(format!("COM init failed: {e}")),
             }
             let result = do_convert(pptx_path, out_pdf);
             CoUninitialize();
