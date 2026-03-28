@@ -1,4 +1,5 @@
 use std::path::Path;
+#[cfg(not(target_os = "windows"))]
 use std::process::Command;
 
 use crate::temp;
@@ -52,10 +53,8 @@ mod win_com {
         Win32::System::Com::{
             CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize,
             CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_FLAGS, DISPATCH_METHOD,
-            DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
+            DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch, VARIANT, VARIANT_BOOL,
         },
-        Win32::System::Ole::VariantClear,
-        Win32::System::Variant::{VARIANT, VARIANT_BOOL},
     };
 
     // Raw VT_ values to avoid VARENUM newtype conversions
@@ -64,19 +63,31 @@ mod win_com {
     const VT_BOOL: u16 = 11;
     const VT_DISPATCH: u16 = 9;
 
+    /// Frees resources held by a VARIANT based on its type tag.
+    /// Replaces `clear_variant` (whose module path shifted across windows-rs versions).
+    unsafe fn clear_variant(v: &mut VARIANT) {
+        let vt = v.Anonymous.Anonymous.vt;
+        if vt == VT_BSTR {
+            ManuallyDrop::drop(&mut v.Anonymous.Anonymous.Anonymous.bstrVal);
+            v.Anonymous.Anonymous.vt = 0; // VT_EMPTY
+        } else if vt == VT_DISPATCH {
+            ManuallyDrop::drop(&mut v.Anonymous.Anonymous.Anonymous.pdispVal);
+            v.Anonymous.Anonymous.vt = 0;
+        }
+    }
+
     /// Entry point — initialises a COM STA apartment, drives PowerPoint, then
     /// uninitialises. Called from a dedicated std::thread to keep the apartment
     /// separate from Tokio's thread pool.
     pub fn convert(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
         unsafe {
-            match CoInitializeEx(None, COINIT_APARTMENTTHREADED) {
-                Ok(()) => {}
-                Err(e) => {
-                    // 0x80010106 = RPC_E_CHANGED_MODE: thread already initialised
-                    // with a different model — continue anyway.
-                    if e.code().0 as u32 != 0x8001_0106 {
-                        return Err(format!("COM init failed: {e}"));
-                    }
+            // CoInitializeEx returns HRESULT directly (S_OK, S_FALSE, or error).
+            // 0x80010106 = RPC_E_CHANGED_MODE: thread already initialised with a
+            // different apartment model — safe to continue.
+            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            if let Err(e) = hr.ok() {
+                if hr.0 as u32 != 0x8001_0106 {
+                    return Err(format!("COM init failed: {e}"));
                 }
             }
             let result = do_convert(pptx_path, out_pdf);
@@ -122,7 +133,7 @@ mod win_com {
 
         // Free the BSTRs we allocated as arguments
         for v in open_args.iter_mut().chain(save_args.iter_mut()) {
-            let _ = VariantClear(v);
+            let _ = clear_variant(v);
         }
 
         Ok(())
@@ -191,22 +202,22 @@ mod win_com {
         args: &mut [VARIANT],
     ) -> Result<(), String> {
         let mut result = invoke_impl(obj, name, DISPATCH_METHOD, args)?;
-        let _ = VariantClear(&mut result);
+        let _ = clear_variant(&mut result);
         Ok(())
     }
 
     /// Extract an IDispatch from a VARIANT, taking ownership (AddRef via clone,
-    /// then VariantClear releases the original reference — net: 0).
+    /// then clear_variant releases the original reference — net: 0).
     unsafe fn extract_disp(result: &mut VARIANT, ctx: &str) -> Result<IDispatch, String> {
         if result.Anonymous.Anonymous.vt != VT_DISPATCH {
-            let _ = VariantClear(result);
+            let _ = clear_variant(result);
             return Err(format!("'{ctx}' did not return a COM dispatch object"));
         }
         let disp = (&*result.Anonymous.Anonymous.Anonymous.pdispVal)
             .as_ref()
             .ok_or_else(|| format!("'{ctx}' returned null"))?
             .clone(); // AddRef
-        let _ = VariantClear(result); // Release original reference
+        let _ = clear_variant(result); // Release original reference
         Ok(disp)
     }
 
