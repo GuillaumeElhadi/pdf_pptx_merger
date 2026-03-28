@@ -13,15 +13,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin --bundles app
-            label: macos-arm64
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin --bundles app
-            label: macos-x86_64
-          - platform: ubuntu-22.04
-            args: ""
-            label: linux
+         # - platform: macos-latest
+          #  args: --target aarch64-apple-darwin --bundles app
+           # label: macos-arm64
+         # - platform: macos-latest
+          #  args: --target x86_64-apple-darwin --bundles app
+           # label: macos-x86_64
+          #- platform: ubuntu-22.04
+          #  args: ""
+          #  label: linux
           - platform: windows-latest
             args: ""
             label: windows

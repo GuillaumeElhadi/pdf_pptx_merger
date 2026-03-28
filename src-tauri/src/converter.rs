@@ -55,25 +55,25 @@ mod win_com {
             CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_FLAGS, DISPATCH_METHOD,
             DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
         },
-        Win32::System::Variant::{VARIANT, VARIANT_BOOL},
+        Win32::System::Variant::{VARIANT, VARENUM},
+        Win32::Foundation::VARIANT_BOOL,
     };
 
-    // Raw VT_ values to avoid VARENUM newtype conversions
-    const VT_BSTR: u16 = 8;
-    const VT_I4: u16 = 3;
-    const VT_BOOL: u16 = 11;
-    const VT_DISPATCH: u16 = 9;
+    const VT_BSTR: VARENUM = VARENUM(8);
+    const VT_I4: VARENUM = VARENUM(3);
+    const VT_BOOL: VARENUM = VARENUM(11);
+    const VT_DISPATCH: VARENUM = VARENUM(9);
 
     /// Frees resources held by a VARIANT based on its type tag.
     /// Replaces `clear_variant` (whose module path shifted across windows-rs versions).
     unsafe fn clear_variant(v: &mut VARIANT) {
         let vt = v.Anonymous.Anonymous.vt;
         if vt == VT_BSTR {
-            ManuallyDrop::drop(&mut v.Anonymous.Anonymous.Anonymous.bstrVal);
-            v.Anonymous.Anonymous.vt = 0; // VT_EMPTY
+            ManuallyDrop::drop(&mut (*v.Anonymous.Anonymous).Anonymous.bstrVal);
+            (*v.Anonymous.Anonymous).vt = VARENUM(0); // VT_EMPTY
         } else if vt == VT_DISPATCH {
-            ManuallyDrop::drop(&mut v.Anonymous.Anonymous.Anonymous.pdispVal);
-            v.Anonymous.Anonymous.vt = 0;
+            ManuallyDrop::drop(&mut (*v.Anonymous.Anonymous).Anonymous.pdispVal);
+            (*v.Anonymous.Anonymous).vt = VARENUM(0);
         }
     }
 
@@ -226,22 +226,22 @@ mod win_com {
 
     unsafe fn make_bstr(s: &str) -> VARIANT {
         let mut v = VARIANT::default();
-        v.Anonymous.Anonymous.vt = VT_BSTR;
-        v.Anonymous.Anonymous.Anonymous.bstrVal = ManuallyDrop::new(BSTR::from(s));
+        (*v.Anonymous.Anonymous).vt = VT_BSTR;
+        (*v.Anonymous.Anonymous).Anonymous.bstrVal = ManuallyDrop::new(BSTR::from(s));
         v
     }
 
     unsafe fn make_i4(n: i32) -> VARIANT {
         let mut v = VARIANT::default();
-        v.Anonymous.Anonymous.vt = VT_I4;
-        v.Anonymous.Anonymous.Anonymous.lVal = n;
+        (*v.Anonymous.Anonymous).vt = VT_I4;
+        (*v.Anonymous.Anonymous).Anonymous.lVal = n;
         v
     }
 
     unsafe fn make_bool(b: bool) -> VARIANT {
         let mut v = VARIANT::default();
-        v.Anonymous.Anonymous.vt = VT_BOOL;
-        v.Anonymous.Anonymous.Anonymous.boolVal = VARIANT_BOOL(if b { -1 } else { 0 });
+        (*v.Anonymous.Anonymous).vt = VT_BOOL;
+        (*v.Anonymous.Anonymous).Anonymous.boolVal = VARIANT_BOOL(if b { -1 } else { 0 });
         v
     }
 }
