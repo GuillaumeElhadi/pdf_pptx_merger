@@ -1,0 +1,91 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Permet de déclencher manuellement depuis l'UI GitHub
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. Récupérer le code ────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Installer Python ─────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── 3. Télécharger et installer Poppler pour Windows ────────────────────
+      #    On récupère la release officielle depuis GitHub, on l'extrait,
+      #    et on expose le chemin pour le .spec via une variable d'environnement.
+      - name: Install Poppler
+        shell: pwsh
+        run: |
+          $url = "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.08.0-0/Release-24.08.0-0.zip"
+          $zip = "$env:RUNNER_TEMP\poppler.zip"
+          $dest = "C:\poppler"
+
+          Write-Host "Téléchargement de Poppler..."
+          Invoke-WebRequest -Uri $url -OutFile $zip
+
+          Write-Host "Extraction..."
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+
+          # Le zip extrait un sous-dossier versionné — on le localise dynamiquement
+          $binDir = Get-ChildItem "$dest" -Recurse -Filter "pdftoppm.exe" |
+                    Select-Object -First 1 -ExpandProperty DirectoryName
+
+          Write-Host "Poppler bin trouvé : $binDir"
+
+          # Exposer le chemin aux étapes suivantes
+          echo "POPPLER_BIN_PATH=$binDir" >> $env:GITHUB_ENV
+
+      # ── 4. Installer les dépendances Python ─────────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── 5. Patch du .spec avec le bon chemin Poppler ────────────────────────
+      #    Le .spec contient POPPLER_BIN_PATH = r"C:\poppler\Library\bin"
+      #    On le remplace par le chemin réel détecté à l'étape précédente.
+      - name: Patch POPPLER_BIN_PATH in spec
+        shell: pwsh
+        run: |
+          $spec = Get-Content "pdf_pptx_merger.spec" -Raw
+          $escaped = $env:POPPLER_BIN_PATH -replace '\\', '\\\\'
+          $spec = $spec -replace 'POPPLER_BIN_PATH = r"[^"]+"', "POPPLER_BIN_PATH = r`"$env:POPPLER_BIN_PATH`""
+          Set-Content "pdf_pptx_merger.spec" $spec
+          Write-Host "Spec patché avec : $env:POPPLER_BIN_PATH"
+
+      # ── 6. Build PyInstaller ─────────────────────────────────────────────────
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller pdf_pptx_merger.spec
+
+      # ── 7. Vérifier que l'exe existe ─────────────────────────────────────────
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          $exe = "dist\PDFPPTXMerger.exe"
+          if (Test-Path $exe) {
+            $size = (Get-Item $exe).Length / 1MB
+            Write-Host "✓ EXE produit : $exe ($([math]::Round($size, 1)) MB)"
+          } else {
+            Write-Error "EXE introuvable — le build a échoué."
+            exit 1
+          }
+
+      # ── 8. Publier l'exe comme artifact téléchargeable ──────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDFPPTXMerger-windows
+          path: dist\PDFPPTXMerger.exe
+          retention-days: 30
