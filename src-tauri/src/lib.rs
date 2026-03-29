@@ -10,18 +10,53 @@ fn get_google_drive_path() -> Option<String> {
 
     #[cfg(target_os = "windows")]
     {
-        // Older Google Drive sync client
-        if let Ok(home) = std::env::var("USERPROFILE") {
-            let p = PathBuf::from(&home).join("Google Drive").join("My Drive");
-            if p.exists() {
-                return Some(p.to_string_lossy().into_owned());
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+
+        let drive_folder_names = ["My Drive", "Mon Drive", "Mi unidad", "Mein Ablageplatz", "Il mio Drive"];
+
+        // Google Drive for Desktop (DriveFS) — read mount point from registry (most reliable)
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(prefs) = hkcu.open_subkey("Software\\Google\\DriveFS\\PerAccountPreferences") {
+            for account in prefs.enum_keys().flatten() {
+                if let Ok(account_key) = prefs.open_subkey(&account) {
+                    if let Ok(mount_point) = account_key.get_value::<String, _>("mount_point_path") {
+                        let base = PathBuf::from(&mount_point);
+                        for name in &drive_folder_names {
+                            let p = base.join(name);
+                            if p.exists() {
+                                return Some(p.to_string_lossy().into_owned());
+                            }
+                        }
+                    }
+                }
             }
         }
-        // Google Drive for Desktop (DriveFS) — scan drive letters for a "My Drive" root
+
+        // Older Google Drive for Desktop / Backup & Sync — check USERPROFILE
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            let base = PathBuf::from(&home).join("Google Drive");
+            // New-style: subfolder "My Drive" (or locale variant)
+            for name in &drive_folder_names {
+                let p = base.join(name);
+                if p.exists() {
+                    return Some(p.to_string_lossy().into_owned());
+                }
+            }
+            // Old Backup & Sync: files directly in "Google Drive" (no subfolder)
+            if base.exists() {
+                return Some(base.to_string_lossy().into_owned());
+            }
+        }
+
+        // Last resort: scan all drive letters for a DriveFS virtual drive
         for letter in b'A'..=b'Z' {
-            let drive = format!("{}:\\My Drive", letter as char);
-            if std::path::Path::new(&drive).exists() {
-                return Some(drive);
+            let base = PathBuf::from(format!("{}:\\", letter as char));
+            for name in &drive_folder_names {
+                let p = base.join(name);
+                if p.exists() {
+                    return Some(p.to_string_lossy().into_owned());
+                }
             }
         }
     }
