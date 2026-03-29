@@ -1,20 +1,12 @@
 import { useMergeStore } from "../../store/useMergeStore";
 
 export function TopBar() {
-  const { pptxPath, slideCount, items, status, loadPptx, addPdfs } =
-    useMergeStore();
+  const { pptxPath, items, status, loadPptx, addPdfs } = useMergeStore();
 
   const isConverting = status === "converting";
   const isMerging = status === "merging";
   const busy = isConverting || isMerging;
-  const hasPptx = slideCount > 0;
   const hasPdf = items.some((i) => i.type === "pdf");
-
-  const handleAddSlideGroup = () => {
-    // Open the slide picker — we signal via a custom event so the
-    // picker (rendered in App) can open without prop drilling.
-    window.dispatchEvent(new CustomEvent("open-slide-picker", { detail: { mode: "create" } }));
-  };
 
   return (
     <header style={styles.bar}>
@@ -25,22 +17,13 @@ export function TopBar() {
           style={styles.btn}
           onClick={loadPptx}
           disabled={busy}
-          title={pptxPath ?? "No PPTX loaded"}
+          title={pptxPath ?? "Aucun PPTX chargé"}
         >
-          {isConverting ? "Converting…" : "📄 Load PPTX"}
+          {isConverting ? "Conversion…" : "📄 Ajout PowerPoint"}
         </button>
 
         <button style={styles.btn} onClick={addPdfs} disabled={busy}>
-          ＋ Add PDFs
-        </button>
-
-        <button
-          style={{ ...styles.btn, opacity: hasPptx ? 1 : 0.4 }}
-          onClick={handleAddSlideGroup}
-          disabled={!hasPptx || busy}
-          title={hasPptx ? "Add a slide group" : "Load a PPTX first"}
-        >
-          ▦ Add slide group
+          ＋ Ajouter des PDFs
         </button>
       </div>
 
@@ -53,7 +36,7 @@ export function TopBar() {
         disabled={!hasPdf || busy}
         onClick={() => useMergeStore.getState().generate()}
       >
-        {isMerging ? "Generating…" : "⚙ Generate PDF"}
+        {isMerging ? "Fusion…" : "⚙ Générer PDF"}
       </button>
     </header>
   );

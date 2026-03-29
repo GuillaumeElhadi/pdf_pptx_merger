@@ -5,20 +5,21 @@ import { PDFDocument, PDFPage } from "pdf-lib";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Bridge } from "../services/bridge";
-import type { AppStatus, MergeItem, PdfItem, SlideGroupItem } from "../types";
+import type { AppStatus, MergeItem, PdfItem, SlideItem } from "../types";
 
 interface MergeStore {
   // ── PPTX state ────────────────────────────────────────────────────────────
   pptxPath: string | null;
-  /** Path to the single merged PDF produced from the PPTX. */
   slidePdf: string | null;
-  /** Total number of slides available (= pages in slidePdf). */
   slideCount: number;
-  /** Slide indices already assigned to a group — cannot be reused. */
-  usedSlideIndices: Set<number>;
 
   // ── Flat merge list ───────────────────────────────────────────────────────
   items: MergeItem[];
+
+  // ── Selection (lifted here so the banner can live outside the scroll area) ─
+  selectedSlideIds: Set<string>;
+  setSelectedSlideIds: (ids: Set<string>) => void;
+  clearSelection: () => void;
 
   // ── Status ────────────────────────────────────────────────────────────────
   status: AppStatus;
@@ -28,10 +29,8 @@ interface MergeStore {
   // ── Actions ───────────────────────────────────────────────────────────────
   loadPptx: () => Promise<void>;
   addPdfs: () => Promise<void>;
-  addSlideGroup: (slideIndices: number[]) => void;
-  updateSlideGroup: (id: string, slideIndices: number[]) => void;
   removeItem: (id: string) => void;
-  reorderItems: (activeId: string, overId: string) => void;
+  reorderItems: (activeId: string, overId: string, selectedIds?: Set<string>) => void;
   generate: () => Promise<void>;
   clearError: () => void;
 }
@@ -40,21 +39,24 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   pptxPath: null,
   slidePdf: null,
   slideCount: 0,
-  usedSlideIndices: new Set(),
   items: [],
+  selectedSlideIds: new Set(),
   status: "idle",
   statusMessage: "Ready.",
   lastOutputPath: null,
+
+  setSelectedSlideIds: (ids) => set({ selectedSlideIds: ids }),
+  clearSelection: () => set({ selectedSlideIds: new Set() }),
 
   // ── loadPptx ─────────────────────────────────────────────────────────────
   loadPptx: async () => {
     const path = await Bridge.pickPptxFile();
     if (!path) return;
 
-    const hasGroups = get().items.some((i) => i.type === "slide-group");
-    if (hasGroups) {
+    const hasSlides = get().items.some((i) => i.type === "slide");
+    if (hasSlides) {
       const ok = confirm(
-        "Loading a new PPTX will remove all existing slide groups. Continue?"
+        "Loading a new PPTX will replace all existing slides. Continue?"
       );
       if (!ok) return;
     }
@@ -64,7 +66,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       statusMessage: "Converting PPTX via PowerPoint…",
       pptxPath: path,
       items: get().items.filter((i) => i.type === "pdf"),
-      usedSlideIndices: new Set(),
+      selectedSlideIds: new Set(),
       slidePdf: null,
       slideCount: 0,
     });
@@ -72,12 +74,20 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     try {
       const mergedPdf = await Bridge.convertPptx(path);
       const count = await Bridge.getPdfPageCount(mergedPdf);
-      set({
+
+      const slideItems: SlideItem[] = Array.from({ length: count }, (_, i) => ({
+        id: uuid(),
+        type: "slide",
+        slideIndex: i,
+      }));
+
+      set((s) => ({
         slidePdf: mergedPdf,
         slideCount: count,
+        items: [...s.items, ...slideItems],
         status: "idle",
         statusMessage: `PPTX loaded — ${count} slide${count !== 1 ? "s" : ""} available.`,
-      });
+      }));
     } catch (e) {
       set({
         status: "error",
@@ -106,58 +116,37 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     }));
   },
 
-  // ── addSlideGroup ─────────────────────────────────────────────────────────
-  addSlideGroup: (slideIndices) => {
-    if (slideIndices.length === 0) return;
-    const sorted = [...slideIndices].sort((a, b) => a - b);
-    const item: SlideGroupItem = { id: uuid(), type: "slide-group", slideIndices: sorted };
-
+  // ── removeItem ────────────────────────────────────────────────────────────
+  removeItem: (id) => {
     set((s) => ({
-      items: [...s.items, item],
-      usedSlideIndices: new Set([...s.usedSlideIndices, ...sorted]),
-      statusMessage: `Slide group added (${sorted.length} slide${sorted.length !== 1 ? "s" : ""}).`,
+      items: s.items.filter((i) => i.id !== id),
+      selectedSlideIds: new Set([...s.selectedSlideIds].filter((sid) => sid !== id)),
     }));
   },
 
-  // ── updateSlideGroup ──────────────────────────────────────────────────────
-  updateSlideGroup: (id, slideIndices) => {
-    const sorted = [...slideIndices].sort((a, b) => a - b);
-    set((s) => {
-      const old = s.items.find((i) => i.id === id) as SlideGroupItem | undefined;
-      const oldIndices = old?.slideIndices ?? [];
-
-      const newUsed = new Set(s.usedSlideIndices);
-      oldIndices.forEach((i) => newUsed.delete(i));
-      sorted.forEach((i) => newUsed.add(i));
-
-      return {
-        items: s.items.map((item) =>
-          item.id === id ? { ...item, slideIndices: sorted } : item
-        ),
-        usedSlideIndices: newUsed,
-        statusMessage: "Slide group updated.",
-      };
-    });
-  },
-
-  // ── removeItem ────────────────────────────────────────────────────────────
-  removeItem: (id) => {
-    set((s) => {
-      const target = s.items.find((i) => i.id === id);
-      const newUsed = new Set(s.usedSlideIndices);
-      if (target?.type === "slide-group") {
-        target.slideIndices.forEach((i) => newUsed.delete(i));
-      }
-      return {
-        items: s.items.filter((i) => i.id !== id),
-        usedSlideIndices: newUsed,
-      };
-    });
-  },
-
   // ── reorderItems ──────────────────────────────────────────────────────────
-  reorderItems: (activeId, overId) => {
+  reorderItems: (activeId, overId, selectedIds?) => {
     set((s) => {
+      if (selectedIds && selectedIds.size > 1 && selectedIds.has(activeId)) {
+        const oldIndex = s.items.findIndex((i) => i.id === activeId);
+        const newIndex = s.items.findIndex((i) => i.id === overId);
+        const draggingDown = newIndex > oldIndex;
+
+        const selected = s.items.filter((i) => selectedIds.has(i.id));
+        const others = s.items.filter((i) => !selectedIds.has(i.id));
+        const overInOthers = others.findIndex((i) => i.id === overId);
+
+        let pos: number;
+        if (overInOthers === -1) {
+          pos = others.length;
+        } else if (draggingDown) {
+          pos = overInOthers + 1;
+        } else {
+          pos = overInOthers;
+        }
+
+        return { items: [...others.slice(0, pos), ...selected, ...others.slice(pos)] };
+      }
       const oldIndex = s.items.findIndex((i) => i.id === activeId);
       const newIndex = s.items.findIndex((i) => i.id === overId);
       if (oldIndex === -1 || newIndex === -1) return s;
@@ -187,7 +176,6 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     try {
       const merged = await PDFDocument.create();
 
-      // Cache loaded source documents to avoid re-reading large files
       const docCache = new Map<string, PDFDocument>();
       const loadDoc = async (path: string): Promise<PDFDocument> => {
         const cached = docCache.get(path);
@@ -200,25 +188,20 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       };
 
       let processed = 0;
-      const total = items.reduce(
-        (n, item) =>
-          item.type === "pdf" ? n + 1 : n + item.slideIndices.length,
-        0
-      );
+      const total = items.length;
 
       for (const item of items) {
         if (item.type === "pdf") {
           const doc = await loadDoc(item.pdfPath);
           const pages = await merged.copyPages(doc, doc.getPageIndices());
           pages.forEach((p: PDFPage) => merged.addPage(p));
-          processed += 1;
         } else {
           if (!slidePdf) continue;
           const doc = await loadDoc(slidePdf);
-          const pages = await merged.copyPages(doc, item.slideIndices);
-          pages.forEach((p: PDFPage) => merged.addPage(p));
-          processed += item.slideIndices.length;
+          const [page] = await merged.copyPages(doc, [item.slideIndex]);
+          merged.addPage(page);
         }
+        processed += 1;
         set({ statusMessage: `Merging… ${processed}/${total}` });
       }
 

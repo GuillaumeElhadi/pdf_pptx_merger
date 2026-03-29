@@ -4,13 +4,13 @@ export interface PdfItem {
   pdfPath: string;
 }
 
-export interface SlideGroupItem {
+export interface SlideItem {
   id: string;
-  type: "slide-group";
-  /** Slide indices in original PPTX order (0-based). */
-  slideIndices: number[];
+  type: "slide";
+  /** 0-based index into the converted PPTX PDF. */
+  slideIndex: number;
 }
 
-export type MergeItem = PdfItem | SlideGroupItem;
+export type MergeItem = PdfItem | SlideItem;
 
 export type AppStatus = "idle" | "converting" | "merging" | "error";
