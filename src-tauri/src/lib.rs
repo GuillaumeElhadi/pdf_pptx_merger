@@ -77,6 +77,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             converter::convert_pptx,
             splitter::get_pdf_page_count,
+            splitter::extract_pdf_page,
             temp::get_temp_dir,
             get_google_drive_path,
         ])

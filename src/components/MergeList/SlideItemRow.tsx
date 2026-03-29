@@ -4,6 +4,7 @@ import { SlideItem } from "../../types";
 import { useMergeStore } from "../../store/useMergeStore";
 import { ZoomThumb } from "./ZoomThumb";
 import { strings } from "../../strings";
+import { Bridge } from "../../services/bridge";
 
 interface Props {
   item: SlideItem;
@@ -33,6 +34,12 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
       ref={setNodeRef}
       style={rowStyle}
       onClick={onSelect}
+      onDoubleClick={() => {
+        if (!slidePdf) return;
+        Bridge.extractPdfPage(slidePdf, item.slideIndex)
+          .then((path) => Bridge.openFile(path))
+          .catch((e) => alert(String(e)));
+      }}
       title={selected ? strings.slideItem.selectTooltip : strings.slideItem.unselectTooltip}
     >
       {isGroupFollower && <div style={styles.followerBar} />}

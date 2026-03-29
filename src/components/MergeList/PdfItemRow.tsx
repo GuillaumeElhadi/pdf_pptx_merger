@@ -4,6 +4,8 @@ import { PdfItem } from "../../types";
 import { useMergeStore } from "../../store/useMergeStore";
 import { basename } from "../../utils/path";
 import { ZoomThumb } from "./ZoomThumb";
+import { Bridge } from "../../services/bridge";
+import { strings } from "../../strings";
 
 interface Props {
   item: PdfItem;
@@ -23,6 +25,8 @@ export function PdfItemRow({ item }: Props) {
         transition,
         opacity: isDragging ? 0.5 : 1,
       }}
+      onDoubleClick={() => Bridge.openFile(item.pdfPath).catch((e) => alert(String(e)))}
+      title={strings.pdfItem.openTooltip}
     >
       <span style={styles.handle} {...listeners} {...attributes}>
         ⠿
