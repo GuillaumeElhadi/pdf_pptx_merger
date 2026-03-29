@@ -25,10 +25,12 @@ export function PdfItemRow({ item }: Props) {
         transition,
         opacity: isDragging ? 0.5 : 1,
       }}
+      {...listeners}
+      {...attributes}
       onDoubleClick={() => Bridge.openFile(item.pdfPath).catch((e) => alert(String(e)))}
       title={strings.pdfItem.openTooltip}
     >
-      <span style={styles.handle} {...listeners} {...attributes}>
+      <span style={styles.handle}>
         ⠿
       </span>
       <ZoomThumb pdfPath={item.pdfPath} pageIndex={0} alt={basename(item.pdfPath)} />
@@ -50,6 +52,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     border: "1px solid #383838",
     userSelect: "none",
+    cursor: "grab",
   },
   handle: {
     cursor: "grab",

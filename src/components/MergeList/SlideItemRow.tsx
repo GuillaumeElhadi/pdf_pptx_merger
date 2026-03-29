@@ -33,6 +33,8 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
     <div
       ref={setNodeRef}
       style={rowStyle}
+      {...listeners}
+      {...attributes}
       onClick={onSelect}
       onDoubleClick={() => {
         if (!slidePdf) return;
@@ -44,12 +46,7 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
     >
       {isGroupFollower && <div style={styles.followerBar} />}
 
-      <span
-        style={styles.handle}
-        {...listeners}
-        {...attributes}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <span style={styles.handle}>
         ⠿
       </span>
 
