@@ -12,10 +12,7 @@
         { "path": "$HOME/**" },
         { "path": "/var/folders/**" },
         { "path": "/tmp/**" },
-        { "path": "C:/Users/**" },
-        { "path": "C:/Windows/Temp/**" },
-        { "path": "D:/**" },
-        { "path": "E:/**" }
+        { "path": "?:/**" }
       ]
     },
     "dialog:default",
