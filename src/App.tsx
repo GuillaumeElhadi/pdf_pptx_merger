@@ -1,47 +1,32 @@
-import { useEffect, useState } from "react";
 import { TopBar } from "./components/TopBar/TopBar";
 import { MergeList } from "./components/MergeList/MergeList";
-import { SlidePicker } from "./components/SlidePicker/SlidePicker";
 import { StatusBar } from "./components/StatusBar";
-
-type PickerState =
-  | { open: false }
-  | { open: true; mode: "create" }
-  | { open: true; mode: "edit"; id: string };
+import { useMergeStore } from "./store/useMergeStore";
 
 export default function App() {
-  const [picker, setPicker] = useState<PickerState>({ open: false });
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { mode, id } = (e as CustomEvent).detail;
-      if (mode === "create") {
-        setPicker({ open: true, mode: "create" });
-      } else {
-        setPicker({ open: true, mode: "edit", id });
-      }
-    };
-    window.addEventListener("open-slide-picker", handler);
-    return () => window.removeEventListener("open-slide-picker", handler);
-  }, []);
+  const { selectedSlideIds, clearSelection } = useMergeStore();
+  const selectionCount = selectedSlideIds.size;
 
   return (
     <div style={styles.app}>
       <TopBar />
+
+      {selectionCount > 1 && (
+        <div style={styles.selectionBanner}>
+          <span>
+            {selectionCount} slides sélectionnées — déplacez l'une pour les déplacer toutes
+          </span>
+          <button style={styles.clearBtn} onClick={clearSelection}>
+            Désélectionner
+          </button>
+        </div>
+      )}
 
       <main style={styles.main}>
         <MergeList />
       </main>
 
       <StatusBar />
-
-      {picker.open && (
-        <SlidePicker
-          mode={picker.mode}
-          editId={picker.mode === "edit" ? picker.id : undefined}
-          onClose={() => setPicker({ open: false })}
-        />
-      )}
     </div>
   );
 }
@@ -55,6 +40,28 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#ddd",
     fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     overflow: "hidden",
+  },
+  selectionBanner: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 16px",
+    background: "#1a3a5c",
+    borderBottom: "1px solid #4a9eff",
+    fontSize: 13,
+    color: "#88ccff",
+    flexShrink: 0,
+    userSelect: "none",
+  },
+  clearBtn: {
+    background: "none",
+    border: "1px solid #4a7aaa",
+    borderRadius: 4,
+    color: "#88aacc",
+    cursor: "pointer",
+    fontSize: 12,
+    padding: "2px 10px",
+    flexShrink: 0,
   },
   main: {
     flex: 1,

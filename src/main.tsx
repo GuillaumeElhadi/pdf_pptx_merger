@@ -15,6 +15,8 @@ globalStyle.textContent = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #1e1e1e; color: #ddd; }
   button:focus-visible { outline: 2px solid #4a9eff; }
+  * { -webkit-user-select: none; user-select: none; }
+  input, textarea { -webkit-user-select: text; user-select: text; }
 `;
 document.head.appendChild(globalStyle);
 

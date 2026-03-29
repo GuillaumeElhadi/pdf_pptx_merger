@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { PdfItem } from "../../types";
 import { useMergeStore } from "../../store/useMergeStore";
 import { basename } from "../../utils/path";
+import { ZoomThumb } from "./ZoomThumb";
 
 interface Props {
   item: PdfItem;
@@ -26,7 +27,7 @@ export function PdfItemRow({ item }: Props) {
       <span style={styles.handle} {...listeners} {...attributes}>
         ⠿
       </span>
-      <span style={styles.icon}>📄</span>
+      <ZoomThumb pdfPath={item.pdfPath} pageIndex={0} alt={basename(item.pdfPath)} />
       <span style={styles.name}>{basename(item.pdfPath)}</span>
       <button style={styles.remove} onClick={() => removeItem(item.id)}>
         ✕
@@ -52,7 +53,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 16,
     padding: "0 4px",
   },
-  icon: { fontSize: 16 },
   name: {
     flex: 1,
     color: "#ddd",
