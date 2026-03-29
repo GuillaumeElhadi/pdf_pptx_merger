@@ -9,10 +9,7 @@
     {
       "identifier": "opener:allow-open-path",
       "allow": [
-        { "path": "$HOME/**" },
-        { "path": "/var/folders/**" },
-        { "path": "/tmp/**" },
-        { "path": "?:/**" }
+        { "path": "**" }
       ]
     },
     "dialog:default",
