@@ -27,8 +27,8 @@ interface MergeStore {
   lastOutputPath: string | null;
 
   // ── Actions ───────────────────────────────────────────────────────────────
-  loadPptx: () => Promise<void>;
-  addPdfs: () => Promise<void>;
+  loadPptx: (defaultPath?: string) => Promise<void>;
+  addPdfs: (defaultPath?: string) => Promise<void>;
   removeItem: (id: string) => void;
   reorderItems: (activeId: string, overId: string, selectedIds?: Set<string>) => void;
   generate: () => Promise<void>;
@@ -49,8 +49,8 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   clearSelection: () => set({ selectedSlideIds: new Set() }),
 
   // ── loadPptx ─────────────────────────────────────────────────────────────
-  loadPptx: async () => {
-    const path = await Bridge.pickPptxFile();
+  loadPptx: async (defaultPath?: string) => {
+    const path = await Bridge.pickPptxFile(defaultPath);
     if (!path) return;
 
     const hasSlides = get().items.some((i) => i.type === "slide");
@@ -100,8 +100,8 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   },
 
   // ── addPdfs ──────────────────────────────────────────────────────────────
-  addPdfs: async () => {
-    const paths = await Bridge.pickPdfFiles();
+  addPdfs: async (defaultPath?: string) => {
+    const paths = await Bridge.pickPdfFiles(defaultPath);
     if (!paths || paths.length === 0) return;
 
     const newItems: PdfItem[] = paths.map((p) => ({

@@ -18,12 +18,15 @@ export const Bridge = {
 
   // ── File dialogs ──────────────────────────────────────────────────────────
 
-  pickPptxFile: (): Promise<string | null> =>
-    open({ multiple: false, filters: PPTX_FILTER }) as Promise<string | null>,
+  pickPptxFile: (defaultPath?: string): Promise<string | null> =>
+    open({ multiple: false, filters: PPTX_FILTER, defaultPath }) as Promise<string | null>,
 
-  pickPdfFiles: (): Promise<string[] | null> =>
-    open({ multiple: true, filters: PDF_FILTER }) as Promise<string[] | null>,
+  pickPdfFiles: (defaultPath?: string): Promise<string[] | null> =>
+    open({ multiple: true, filters: PDF_FILTER, defaultPath }) as Promise<string[] | null>,
 
   pickSaveLocation: (): Promise<string | null> =>
     save({ defaultPath: "merged.pdf", filters: PDF_FILTER }),
+
+  getGoogleDrivePath: (): Promise<string | null> =>
+    invoke("get_google_drive_path"),
 };

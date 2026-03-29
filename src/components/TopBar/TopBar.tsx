@@ -1,7 +1,14 @@
+import { useEffect, useState } from "react";
 import { useMergeStore } from "../../store/useMergeStore";
+import { Bridge } from "../../services/bridge";
 
 export function TopBar() {
   const { pptxPath, items, status, loadPptx, addPdfs } = useMergeStore();
+  const [googleDrivePath, setGoogleDrivePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    Bridge.getGoogleDrivePath().then(setGoogleDrivePath);
+  }, []);
 
   const isConverting = status === "converting";
   const isMerging = status === "merging";
@@ -13,18 +20,46 @@ export function TopBar() {
       <span style={styles.title}>PDF Merger</span>
 
       <div style={styles.actions}>
-        <button
-          style={styles.btn}
-          onClick={loadPptx}
-          disabled={busy}
-          title={pptxPath ?? "Aucun PPTX chargé"}
-        >
-          {isConverting ? "Conversion…" : "📄 Ajout PowerPoint"}
-        </button>
+        <div style={styles.btnGroup}>
+          <button
+            style={styles.btn}
+            onClick={() => loadPptx()}
+            disabled={busy}
+            title={pptxPath ?? "Aucun PPTX chargé"}
+          >
+            {isConverting ? "Conversion…" : "📄 Ajout PowerPoint"}
+          </button>
+          {googleDrivePath && (
+            <button
+              style={{ ...styles.btn, ...styles.driveBtn }}
+              onClick={() => loadPptx(googleDrivePath)}
+              disabled={busy}
+              title={`Ouvrir depuis Google Drive (${googleDrivePath})`}
+            >
+              ☁
+            </button>
+          )}
+        </div>
 
-        <button style={styles.btn} onClick={addPdfs} disabled={busy}>
-          ＋ Ajouter des PDFs
-        </button>
+        <div style={styles.btnGroup}>
+          <button
+            style={styles.btn}
+            onClick={() => addPdfs()}
+            disabled={busy}
+          >
+            ＋ Ajouter des PDFs
+          </button>
+          {googleDrivePath && (
+            <button
+              style={{ ...styles.btn, ...styles.driveBtn }}
+              onClick={() => addPdfs(googleDrivePath)}
+              disabled={busy}
+              title={`Ouvrir depuis Google Drive (${googleDrivePath})`}
+            >
+              ☁
+            </button>
+          )}
+        </div>
       </div>
 
       <button
@@ -63,6 +98,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
     flex: 1,
   },
+  btnGroup: {
+    display: "flex",
+    gap: 1,
+  },
   btn: {
     padding: "6px 14px",
     border: "none",
@@ -72,6 +111,13 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: 13,
     whiteSpace: "nowrap",
+  },
+  driveBtn: {
+    padding: "6px 10px",
+    borderRadius: "0 4px 4px 0",
+    background: "#2d6a2d",
+    color: "#fff",
+    fontSize: 12,
   },
   generateBtn: {
     background: "#c05000",
