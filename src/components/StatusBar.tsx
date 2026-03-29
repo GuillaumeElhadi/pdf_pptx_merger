@@ -1,4 +1,5 @@
 import { useMergeStore } from "../store/useMergeStore";
+import { strings } from "../strings";
 
 export function StatusBar() {
   const { status, statusMessage, clearError } = useMergeStore();
@@ -18,7 +19,7 @@ export function StatusBar() {
       <span style={{ ...styles.msg, color }}>{statusMessage}</span>
       {status === "error" && (
         <button style={styles.dismiss} onClick={clearError}>
-          Dismiss
+          {strings.statusBar.dismiss}
         </button>
       )}
     </div>

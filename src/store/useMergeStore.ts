@@ -5,6 +5,7 @@ import { PDFDocument, PDFPage } from "pdf-lib";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Bridge } from "../services/bridge";
+import { strings } from "../strings";
 import type { AppStatus, MergeItem, PdfItem, SlideItem } from "../types";
 
 interface MergeStore {
@@ -42,7 +43,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   items: [],
   selectedSlideIds: new Set(),
   status: "idle",
-  statusMessage: "Ready.",
+  statusMessage: strings.status.ready,
   lastOutputPath: null,
 
   setSelectedSlideIds: (ids) => set({ selectedSlideIds: ids }),
@@ -55,15 +56,13 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
     const hasSlides = get().items.some((i) => i.type === "slide");
     if (hasSlides) {
-      const ok = confirm(
-        "Loading a new PPTX will replace all existing slides. Continue?"
-      );
+      const ok = confirm(strings.confirm.replacePptx);
       if (!ok) return;
     }
 
     set({
       status: "converting",
-      statusMessage: "Converting PPTX via PowerPoint…",
+      statusMessage: strings.status.converting,
       pptxPath: path,
       items: get().items.filter((i) => i.type === "pdf"),
       selectedSlideIds: new Set(),
@@ -86,7 +85,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         slideCount: count,
         items: [...s.items, ...slideItems],
         status: "idle",
-        statusMessage: `PPTX loaded — ${count} slide${count !== 1 ? "s" : ""} available.`,
+        statusMessage: strings.status.pptxLoaded(count),
       }));
     } catch (e) {
       set({
@@ -112,7 +111,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
     set((s) => ({
       items: [...s.items, ...newItems],
-      statusMessage: `Added ${newItems.length} PDF${newItems.length !== 1 ? "s" : ""}.`,
+      statusMessage: strings.status.pdfsAdded(newItems.length),
     }));
   },
 
@@ -163,7 +162,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     let outputPath = await Bridge.pickSaveLocation();
     if (!outputPath) {
       if (lastOutputPath) {
-        const reuse = confirm(`Re-use previous output file?\n${lastOutputPath}`);
+        const reuse = confirm(strings.confirm.reuseOutput(lastOutputPath));
         if (!reuse) return;
         outputPath = lastOutputPath;
       } else {
@@ -171,7 +170,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       }
     }
 
-    set({ status: "merging", statusMessage: "Preparing merge…" });
+    set({ status: "merging", statusMessage: strings.status.preparingMerge });
 
     try {
       const merged = await PDFDocument.create();
@@ -202,7 +201,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
           merged.addPage(page);
         }
         processed += 1;
-        set({ statusMessage: `Merging… ${processed}/${total}` });
+        set({ statusMessage: strings.status.merging(processed, total) });
       }
 
       const bytes = await merged.save();
@@ -210,7 +209,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
       set({
         status: "idle",
-        statusMessage: `✓ PDF saved: ${outputPath}`,
+        statusMessage: strings.status.pdfSaved(outputPath),
         lastOutputPath: outputPath,
       });
     } catch (e) {
@@ -219,5 +218,5 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   },
 
   // ── clearError ────────────────────────────────────────────────────────────
-  clearError: () => set({ status: "idle", statusMessage: "Ready." }),
+  clearError: () => set({ status: "idle", statusMessage: strings.status.ready }),
 }));

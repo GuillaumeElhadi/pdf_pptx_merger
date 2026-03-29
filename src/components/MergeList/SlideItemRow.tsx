@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { SlideItem } from "../../types";
 import { useMergeStore } from "../../store/useMergeStore";
 import { ZoomThumb } from "./ZoomThumb";
+import { strings } from "../../strings";
 
 interface Props {
   item: SlideItem;
@@ -32,7 +33,7 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
       ref={setNodeRef}
       style={rowStyle}
       onClick={onSelect}
-      title={selected ? "Clic pour désélectionner" : "Clic pour sélectionner · Shift+clic pour une plage"}
+      title={selected ? strings.slideItem.selectTooltip : strings.slideItem.unselectTooltip}
     >
       {isGroupFollower && <div style={styles.followerBar} />}
 
@@ -49,20 +50,20 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
         <ZoomThumb
           pdfPath={slidePdf}
           pageIndex={item.slideIndex}
-          alt={`Slide ${item.slideIndex + 1}`}
+          alt={strings.slideItem.label(item.slideIndex + 1)}
         />
       </div>
 
-      <span style={styles.label}>Slide {item.slideIndex + 1}</span>
+      <span style={styles.label}>{strings.slideItem.label(item.slideIndex + 1)}</span>
 
       {isGroupFollower && (
-        <span style={styles.followerTag}>suit le déplacement</span>
+        <span style={styles.followerTag}>{strings.slideItem.followerTag}</span>
       )}
 
       <button
         style={styles.remove}
         onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
-        title="Supprimer"
+        title={strings.slideItem.removeTooltip}
       >
         ✕
       </button>
