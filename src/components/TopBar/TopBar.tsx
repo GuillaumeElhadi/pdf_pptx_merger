@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMergeStore } from "../../store/useMergeStore";
 import { Bridge } from "../../services/bridge";
+import { strings } from "../../strings";
 
 export function TopBar() {
   const { pptxPath, items, status, loadPptx, addPdfs } = useMergeStore();
@@ -25,16 +26,16 @@ export function TopBar() {
             style={styles.btn}
             onClick={() => loadPptx()}
             disabled={busy}
-            title={pptxPath ?? "Aucun PPTX chargé"}
+            title={pptxPath ?? strings.topBar.loadPptxNoFile}
           >
-            {isConverting ? "Conversion…" : "📄 Ajout PowerPoint"}
-          </button>
+            {isConverting ? strings.topBar.loadPptxConverting : strings.topBar.loadPptx}
+</button>
           {googleDrivePath && (
             <button
               style={{ ...styles.btn, ...styles.driveBtn }}
               onClick={() => loadPptx(googleDrivePath)}
               disabled={busy}
-              title={`Ouvrir depuis Google Drive (${googleDrivePath})`}
+              title={strings.topBar.googleDriveTooltip(googleDrivePath)}
             >
               ☁
             </button>
@@ -47,14 +48,14 @@ export function TopBar() {
             onClick={() => addPdfs()}
             disabled={busy}
           >
-            ＋ Ajouter des PDFs
+            {strings.topBar.addPdfs}
           </button>
           {googleDrivePath && (
             <button
               style={{ ...styles.btn, ...styles.driveBtn }}
               onClick={() => addPdfs(googleDrivePath)}
               disabled={busy}
-              title={`Ouvrir depuis Google Drive (${googleDrivePath})`}
+              title={strings.topBar.googleDriveTooltip(googleDrivePath)}
             >
               ☁
             </button>
@@ -71,7 +72,7 @@ export function TopBar() {
         disabled={!hasPdf || busy}
         onClick={() => useMergeStore.getState().generate()}
       >
-        {isMerging ? "Fusion…" : "⚙ Générer PDF"}
+        {isMerging ? strings.topBar.generatePdfMerging : strings.topBar.generatePdf}
       </button>
     </header>
   );

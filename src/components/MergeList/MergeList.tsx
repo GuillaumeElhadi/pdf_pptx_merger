@@ -13,6 +13,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useMergeStore } from "../../store/useMergeStore";
+import { strings } from "../../strings";
 import { PdfItemRow } from "./PdfItemRow";
 import { SlideItemRow } from "./SlideItemRow";
 
@@ -72,7 +73,7 @@ export function MergeList() {
   if (items.length === 0) {
     return (
       <div style={styles.empty}>
-        Add PDFs and load a PPTX, then drag to arrange them.
+        {strings.mergeList.empty}
       </div>
     );
   }
