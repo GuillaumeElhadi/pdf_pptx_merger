@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useThumbnail } from "../../hooks/useThumbnail";
 
@@ -18,6 +18,13 @@ export function ZoomThumb({ pdfPath, pageIndex, alt }: Props) {
   const { url } = useThumbnail(pdfPath, pageIndex, 600);
   const thumbRef = useRef<HTMLDivElement>(null);
   const [zoomPos, setZoomPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Close zoom if the window loses focus (e.g. external app opens on double-click)
+  useEffect(() => {
+    const hide = () => setZoomPos(null);
+    window.addEventListener("blur", hide);
+    return () => window.removeEventListener("blur", hide);
+  }, []);
 
   const handleMouseEnter = () => {
     if (!thumbRef.current) return;

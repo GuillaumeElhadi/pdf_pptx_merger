@@ -24,10 +24,15 @@ export const strings = {
   // SlideItemRow
   slideItem: {
     label: (n: number) => `Diapositive ${n}`,
-    selectTooltip: "Clic pour désélectionner",
-    unselectTooltip: "Clic pour sélectionner · Shift+clic pour une plage",
+    selectTooltip: "Clic pour désélectionner · Double-clic pour ouvrir",
+    unselectTooltip: "Clic pour sélectionner · Shift+clic pour une plage · Double-clic pour ouvrir",
     followerTag: "suit le déplacement",
     removeTooltip: "Supprimer",
+  },
+
+  // PdfItemRow
+  pdfItem: {
+    openTooltip: "Double-clic pour ouvrir",
   },
 
   // Store — status messages

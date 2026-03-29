@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 const PPTX_FILTER = [{ name: "PowerPoint", extensions: ["pptx", "ppt"] }];
 const PDF_FILTER = [{ name: "PDF", extensions: ["pdf"] }];
@@ -29,4 +30,10 @@ export const Bridge = {
 
   getGoogleDrivePath: (): Promise<string | null> =>
     invoke("get_google_drive_path"),
+
+  extractPdfPage: (pdfPath: string, pageIndex: number): Promise<string> =>
+    invoke("extract_pdf_page", { pdfPath, pageIndex }),
+
+  openFile: (path: string): Promise<void> =>
+    openPath(path).catch((e) => { console.error("[Bridge.openFile]", e); throw e; }),
 };

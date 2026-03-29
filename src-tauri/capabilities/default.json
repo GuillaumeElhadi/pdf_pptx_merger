@@ -6,6 +6,18 @@
   "permissions": [
     "core:default",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "/var/folders/**" },
+        { "path": "/tmp/**" },
+        { "path": "C:/Users/**" },
+        { "path": "C:/Windows/Temp/**" },
+        { "path": "D:/**" },
+        { "path": "E:/**" }
+      ]
+    },
     "dialog:default",
     "shell:allow-execute",
     "shell:allow-open",
