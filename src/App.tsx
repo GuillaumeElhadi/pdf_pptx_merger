@@ -1,6 +1,7 @@
 import { TopBar } from "./components/TopBar/TopBar";
 import { MergeList } from "./components/MergeList/MergeList";
 import { StatusBar } from "./components/StatusBar";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { useMergeStore } from "./store/useMergeStore";
 
 export default function App() {
@@ -10,6 +11,7 @@ export default function App() {
   return (
     <div style={styles.app}>
       <TopBar />
+      <UpdateBanner />
 
       {selectionCount > 1 && (
         <div style={styles.selectionBanner}>

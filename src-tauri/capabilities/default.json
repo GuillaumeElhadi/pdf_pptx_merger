@@ -21,6 +21,8 @@
     "fs:write-all",
     "fs:allow-read-dir",
     "fs:allow-mkdir",
-    "fs:allow-remove"
+    "fs:allow-remove",
+    "updater:default",
+    "process:default"
   ]
 }
