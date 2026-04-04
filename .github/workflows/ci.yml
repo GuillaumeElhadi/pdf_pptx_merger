@@ -44,9 +44,6 @@ jobs:
       - name: Frontend build
         run: npm run build
 
-      - name: Rust check
-        run: cd src-tauri && cargo check
-
       - name: Rust clippy
         run: cd src-tauri && cargo clippy -- -D warnings
 
