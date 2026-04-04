@@ -144,7 +144,7 @@ mod win_com {
 
         // Free the BSTRs we allocated as arguments
         for v in open_args.iter_mut().chain(save_args.iter_mut()) {
-            let _ = clear_variant(v);
+            clear_variant(v);
         }
 
         Ok(())
@@ -213,7 +213,7 @@ mod win_com {
         args: &mut [VARIANT],
     ) -> Result<(), String> {
         let mut result = invoke_impl(obj, name, DISPATCH_METHOD, args)?;
-        let _ = clear_variant(&mut result);
+        clear_variant(&mut result);
         Ok(())
     }
 
@@ -221,14 +221,14 @@ mod win_com {
     /// then clear_variant releases the original reference — net: 0).
     unsafe fn extract_disp(result: &mut VARIANT, ctx: &str) -> Result<IDispatch, String> {
         if result.Anonymous.Anonymous.vt != VT_DISPATCH {
-            let _ = clear_variant(result);
+            clear_variant(result);
             return Err(format!("'{ctx}' did not return a COM dispatch object"));
         }
-        let disp = (&*result.Anonymous.Anonymous.Anonymous.pdispVal)
+        let disp = (*result.Anonymous.Anonymous.Anonymous.pdispVal)
             .as_ref()
             .ok_or_else(|| format!("'{ctx}' returned null"))?
             .clone(); // AddRef
-        let _ = clear_variant(result); // Release original reference
+        clear_variant(result); // Release original reference
         Ok(disp)
     }
 
