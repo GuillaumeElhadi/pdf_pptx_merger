@@ -11,8 +11,12 @@ use crate::temp;
 pub async fn convert_pptx(pptx_path: String) -> Result<String, String> {
     let pptx = Path::new(&pptx_path);
     if !pptx.exists() {
-        return Err(format!("File not found: {pptx_path}"));
+        let msg = format!("File not found: {pptx_path}");
+        log::error!("[convert_pptx] {msg}");
+        return Err(msg);
     }
+
+    log::info!("[convert_pptx] Starting conversion: {pptx_path}");
 
     let out_pdf = temp::get()
         .join("slides_merged.pdf")
@@ -35,12 +39,18 @@ pub async fn convert_pptx(pptx_path: String) -> Result<String, String> {
         tx.send(result).ok();
     });
 
-    tokio::task::spawn_blocking(move || {
+    let result = tokio::task::spawn_blocking(move || {
         rx.recv().unwrap_or_else(|_| Err("Conversion thread panicked".to_string()))
     })
     .await
     .map_err(|e| format!("Thread join error: {e}"))?
-    .map(|_| out_pdf)
+    .map(|_| out_pdf);
+
+    match &result {
+        Ok(path) => log::info!("[convert_pptx] Done → {path}"),
+        Err(e) => log::error!("[convert_pptx] Failed: {e}"),
+    }
+    result
 }
 
 // ── Windows: COM automation via windows-rs ────────────────────────────────────

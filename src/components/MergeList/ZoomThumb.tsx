@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useThumbnail } from "../../hooks/useThumbnail";
+import { useDragActive } from "./MergeList";
 
 const ZOOM_W = 480;
 const ZOOM_H = 360;
@@ -11,11 +12,13 @@ interface Props {
   pdfPath: string | null;
   pageIndex: number;
   alt: string;
+  rotation?: number;
 }
 
-export function ZoomThumb({ pdfPath, pageIndex, alt }: Props) {
+export function ZoomThumb({ pdfPath, pageIndex, alt, rotation = 0 }: Props) {
   // Render at 600px so 480px zoom is always sharp (downscaled)
   const { url } = useThumbnail(pdfPath, pageIndex, 600);
+  const isDragging = useDragActive();
   const thumbRef = useRef<HTMLDivElement>(null);
   const [zoomPos, setZoomPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -26,7 +29,13 @@ export function ZoomThumb({ pdfPath, pageIndex, alt }: Props) {
     return () => window.removeEventListener("blur", hide);
   }, []);
 
+  // Dismiss zoom immediately when a drag starts
+  useEffect(() => {
+    if (isDragging) setZoomPos(null);
+  }, [isDragging]);
+
   const handleMouseEnter = () => {
+    if (isDragging) return;
     if (!thumbRef.current) return;
     const rect = thumbRef.current.getBoundingClientRect();
     const margin = 12;
@@ -58,7 +67,19 @@ export function ZoomThumb({ pdfPath, pageIndex, alt }: Props) {
 
       {zoomPos && url && createPortal(
         <div style={{ ...styles.overlay, top: zoomPos.top, left: zoomPos.left }}>
-          <img src={url} style={styles.zoomImg} alt={alt} />
+          <img
+            src={url}
+            style={{
+              ...styles.zoomImg,
+              transform: `rotate(${rotation}deg)`,
+              // For 90°/270° rotations swap displayed dimensions so the rotated
+              // image fills the box without overflowing.
+              ...(rotation === 90 || rotation === 270
+                ? { width: ZOOM_H, height: ZOOM_W }
+                : {}),
+            }}
+            alt={alt}
+          />
         </div>,
         document.body
       )}

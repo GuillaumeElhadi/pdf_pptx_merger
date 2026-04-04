@@ -3,12 +3,18 @@ use lopdf::Document;
 /// Returns the number of pages in a PDF (without splitting).
 #[tauri::command]
 pub async fn get_pdf_page_count(pdf_path: String) -> Result<usize, String> {
-    tokio::task::spawn_blocking(move || {
+    log::info!("[get_pdf_page_count] {pdf_path}");
+    let result = tokio::task::spawn_blocking(move || {
         let doc = Document::load(&pdf_path).map_err(|e| format!("Cannot read PDF: {e}"))?;
         Ok(doc.page_iter().count())
     })
     .await
-    .map_err(|e| format!("Thread join error: {e}"))?
+    .map_err(|e| format!("Thread join error: {e}"))?;
+    match &result {
+        Ok(n) => log::info!("[get_pdf_page_count] {n} pages"),
+        Err(e) => log::error!("[get_pdf_page_count] {e}"),
+    }
+    result
 }
 
 /// Extracts a single page from a PDF into a temp file and returns its path.
@@ -17,6 +23,7 @@ pub async fn get_pdf_page_count(pdf_path: String) -> Result<usize, String> {
 pub async fn extract_pdf_page(pdf_path: String, page_index: usize) -> Result<String, String> {
     use crate::temp;
 
+    log::info!("[extract_pdf_page] page {page_index} from {pdf_path}");
     tokio::task::spawn_blocking(move || {
         let mut doc = Document::load(&pdf_path).map_err(|e| format!("Cannot read PDF: {e}"))?;
 

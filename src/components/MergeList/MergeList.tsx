@@ -1,8 +1,12 @@
-import { useState, useRef } from "react";
+import { useState, useRef, createContext, useContext } from "react";
+
+export const DragActiveContext = createContext(false);
+export const useDragActive = () => useContext(DragActiveContext);
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -18,13 +22,14 @@ import { PdfItemRow } from "./PdfItemRow";
 import { SlideItemRow } from "./SlideItemRow";
 
 export function MergeList() {
-  const { items, selectedSlideIds, setSelectedSlideIds, clearSelection, reorderItems } =
+  const { items, selectedIds, setSelectedIds, clearSelection, reorderItems } =
     useMergeStore();
   const lastClickedIdRef = useRef<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -32,7 +37,7 @@ export function MergeList() {
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const currentSelection = useMergeStore.getState().selectedSlideIds;
+    const currentSelection = useMergeStore.getState().selectedIds;
     setActiveDragId(null);
     clearSelection();
     lastClickedIdRef.current = null;
@@ -43,30 +48,25 @@ export function MergeList() {
 
   const handleDragCancel = () => setActiveDragId(null);
 
-  const handleSlideSelect = (itemId: string, e: React.MouseEvent) => {
+  const handleItemSelect = (itemId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
     if (e.shiftKey && lastClickedIdRef.current) {
-      const slideItems = items.filter((i) => i.type === "slide");
-      const idxA = slideItems.findIndex((i) => i.id === lastClickedIdRef.current);
-      const idxB = slideItems.findIndex((i) => i.id === itemId);
+      const idxA = items.findIndex((i) => i.id === lastClickedIdRef.current);
+      const idxB = items.findIndex((i) => i.id === itemId);
       if (idxA !== -1 && idxB !== -1) {
         const lo = Math.min(idxA, idxB);
         const hi = Math.max(idxA, idxB);
-        const rangeIds = slideItems.slice(lo, hi + 1).map((i) => i.id);
-        setSelectedSlideIds(new Set([...selectedSlideIds, ...rangeIds]));
+        const rangeIds = items.slice(lo, hi + 1).map((i) => i.id);
+        setSelectedIds(new Set([...selectedIds, ...rangeIds]));
         return;
       }
     }
 
-    if (e.ctrlKey || e.metaKey) {
-      const next = new Set(selectedSlideIds);
-      next.has(itemId) ? next.delete(itemId) : next.add(itemId);
-      setSelectedSlideIds(next);
-    } else {
-      setSelectedSlideIds(new Set([itemId]));
-    }
-
+    // Toggle: click adds to selection, click again removes — no Ctrl required
+    const next = new Set(selectedIds);
+    next.has(itemId) ? next.delete(itemId) : next.add(itemId);
+    setSelectedIds(next);
     lastClickedIdRef.current = itemId;
   };
 
@@ -80,10 +80,11 @@ export function MergeList() {
 
   const groupDragActive =
     activeDragId !== null &&
-    selectedSlideIds.has(activeDragId) &&
-    selectedSlideIds.size > 1;
+    selectedIds.has(activeDragId) &&
+    selectedIds.size > 1;
 
   return (
+    <DragActiveContext.Provider value={activeDragId !== null}>
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -98,17 +99,27 @@ export function MergeList() {
         <div style={styles.list}>
           {items.map((item) =>
             item.type === "pdf" ? (
-              <PdfItemRow key={item.id} item={item} />
+              <PdfItemRow
+                key={item.id}
+                item={item}
+                selected={selectedIds.has(item.id)}
+                onSelect={(e) => handleItemSelect(item.id, e)}
+                isGroupFollower={
+                  groupDragActive &&
+                  item.id !== activeDragId &&
+                  selectedIds.has(item.id)
+                }
+              />
             ) : (
               <SlideItemRow
                 key={item.id}
                 item={item}
-                selected={selectedSlideIds.has(item.id)}
-                onSelect={(e) => handleSlideSelect(item.id, e)}
+                selected={selectedIds.has(item.id)}
+                onSelect={(e) => handleItemSelect(item.id, e)}
                 isGroupFollower={
                   groupDragActive &&
                   item.id !== activeDragId &&
-                  selectedSlideIds.has(item.id)
+                  selectedIds.has(item.id)
                 }
               />
             )
@@ -116,6 +127,7 @@ export function MergeList() {
         </div>
       </SortableContext>
     </DndContext>
+    </DragActiveContext.Provider>
   );
 }
 

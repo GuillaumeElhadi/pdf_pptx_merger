@@ -28,11 +28,15 @@ export const strings = {
     unselectTooltip: "Clic pour sélectionner · Shift+clic pour une plage · Double-clic pour ouvrir",
     followerTag: "suit le déplacement",
     removeTooltip: "Supprimer",
+    rotateTooltip: "Rotation +90°",
+    rotateTooltipMulti: (n: number) => `Rotation +90° (${n} sélectionnées)`,
   },
 
   // PdfItemRow
   pdfItem: {
     openTooltip: "Double-clic pour ouvrir",
+    rotateTooltip: "Rotation +90°",
+    rotateTooltipMulti: (n: number) => `Rotation +90° (${n} éléments sélectionnés)`,
   },
 
   // Store — status messages

@@ -4,8 +4,8 @@ import { StatusBar } from "./components/StatusBar";
 import { useMergeStore } from "./store/useMergeStore";
 
 export default function App() {
-  const { selectedSlideIds, clearSelection } = useMergeStore();
-  const selectionCount = selectedSlideIds.size;
+  const { selectedIds, clearSelection } = useMergeStore();
+  const selectionCount = selectedIds.size;
 
   return (
     <div style={styles.app}>
@@ -14,7 +14,7 @@ export default function App() {
       {selectionCount > 1 && (
         <div style={styles.selectionBanner}>
           <span>
-            {selectionCount} slides sélectionnées — déplacez l'une pour les déplacer toutes
+            {selectionCount} éléments sélectionnés — déplacez l'un pour les déplacer tous
           </span>
           <button style={styles.clearBtn} onClick={clearSelection}>
             Désélectionner
