@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useThumbnail } from "../../hooks/useThumbnail";
 import { useDragActive } from "./MergeList";
+import type { Rotation } from "../../types";
 
 const ZOOM_W = 480;
 const ZOOM_H = 360;
@@ -12,7 +13,7 @@ interface Props {
   pdfPath: string | null;
   pageIndex: number;
   alt: string;
-  rotation?: number;
+  rotation?: Rotation;
 }
 
 export function ZoomThumb({ pdfPath, pageIndex, alt, rotation = 0 }: Props) {
