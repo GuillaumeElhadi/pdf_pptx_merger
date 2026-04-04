@@ -61,6 +61,9 @@ jobs:
             libssl-dev \
             pkg-config
 
+      - name: Configure @tauri-apps registry
+        run: npm config set "@tauri-apps:registry" "https://registry.npmjs.org/" --location=project
+
       - name: Install frontend dependencies
         run: npm ci
 
