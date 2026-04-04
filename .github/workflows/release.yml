@@ -13,9 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-         # - platform: macos-latest
-          #  args: --target aarch64-apple-darwin --bundles app
-           # label: macos-arm64
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin --bundles app
+            label: macos-arm64
          # - platform: macos-latest
           #  args: --target x86_64-apple-darwin --bundles app
            # label: macos-x86_64
@@ -61,24 +61,11 @@ jobs:
             libssl-dev \
             pkg-config
 
+      - name: Configure @tauri-apps registry
+        run: npm config set "@tauri-apps:registry" "https://registry.npmjs.org/" --location=project
+
       - name: Install frontend dependencies
         run: npm ci
-
-      - name: Set version from tag
-        shell: node {0}
-        run: |
-          const fs = require('fs');
-          const version = '${{ github.ref_name }}'.replace(/^v/, '');
-
-          // tauri.conf.json
-          const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-          conf.version = version;
-          fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
-
-          // Cargo.toml
-          let cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
-          cargo = cargo.replace(/^version\s*=\s*"[^"]*"/m, `version = "${version}"`);
-          fs.writeFileSync('src-tauri/Cargo.toml', cargo);
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -87,9 +74,5 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          releaseBody: ""
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ github.event.release.id }}
           args: ${{ matrix.args }}
