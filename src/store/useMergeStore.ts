@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 import { arrayMove } from "@dnd-kit/sortable";
-import { PDFDocument, PDFPage } from "pdf-lib";
+import { PDFDocument, PDFPage, degrees } from "pdf-lib";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Bridge } from "../services/bridge";
 import { strings } from "../strings";
-import type { AppStatus, MergeItem, PdfItem, SlideItem } from "../types";
+import { logger } from "../utils/logger";
+import type { AppStatus, MergeItem, PdfItem, Rotation, SlideItem } from "../types";
 
 interface MergeStore {
   // ── PPTX state ────────────────────────────────────────────────────────────
@@ -18,8 +19,8 @@ interface MergeStore {
   items: MergeItem[];
 
   // ── Selection (lifted here so the banner can live outside the scroll area) ─
-  selectedSlideIds: Set<string>;
-  setSelectedSlideIds: (ids: Set<string>) => void;
+  selectedIds: Set<string>;
+  setSelectedIds: (ids: Set<string>) => void;
   clearSelection: () => void;
 
   // ── Status ────────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ interface MergeStore {
   addPdfs: (defaultPath?: string) => Promise<void>;
   removeItem: (id: string) => void;
   reorderItems: (activeId: string, overId: string, selectedIds?: Set<string>) => void;
+  rotateItems: (ids: string[]) => void;
   generate: () => Promise<void>;
   clearError: () => void;
 }
@@ -41,31 +43,39 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   slidePdf: null,
   slideCount: 0,
   items: [],
-  selectedSlideIds: new Set(),
+  selectedIds: new Set(),
   status: "idle",
   statusMessage: strings.status.ready,
   lastOutputPath: null,
 
-  setSelectedSlideIds: (ids) => set({ selectedSlideIds: ids }),
-  clearSelection: () => set({ selectedSlideIds: new Set() }),
+  setSelectedIds: (ids) => set({ selectedIds: ids }),
+  clearSelection: () => set({ selectedIds: new Set() }),
 
   // ── loadPptx ─────────────────────────────────────────────────────────────
   loadPptx: async (defaultPath?: string) => {
     const path = await Bridge.pickPptxFile(defaultPath);
-    if (!path) return;
+    if (!path) {
+      logger.action("loadPptx:cancelled");
+      return;
+    }
 
     const hasSlides = get().items.some((i) => i.type === "slide");
     if (hasSlides) {
       const ok = confirm(strings.confirm.replacePptx);
-      if (!ok) return;
+      if (!ok) {
+        logger.action("loadPptx:replace-declined");
+        return;
+      }
     }
+
+    logger.action("loadPptx", { path });
 
     set({
       status: "converting",
       statusMessage: strings.status.converting,
       pptxPath: path,
       items: get().items.filter((i) => i.type === "pdf"),
-      selectedSlideIds: new Set(),
+      selectedIds: new Set(),
       slidePdf: null,
       slideCount: 0,
     });
@@ -78,6 +88,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         id: uuid(),
         type: "slide",
         slideIndex: i,
+        rotation: 0,
       }));
 
       set((s) => ({
@@ -87,7 +98,9 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         status: "idle",
         statusMessage: strings.status.pptxLoaded(count),
       }));
+      logger.info("loadPptx", `OK — ${count} slides`);
     } catch (e) {
+      logger.error("loadPptx", e);
       set({
         status: "error",
         statusMessage: String(e),
@@ -101,12 +114,18 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   // ── addPdfs ──────────────────────────────────────────────────────────────
   addPdfs: async (defaultPath?: string) => {
     const paths = await Bridge.pickPdfFiles(defaultPath);
-    if (!paths || paths.length === 0) return;
+    if (!paths || paths.length === 0) {
+      logger.action("addPdfs:cancelled");
+      return;
+    }
+
+    logger.action("addPdfs", { count: paths.length, files: paths.map((p) => p.split(/[\\/]/).pop()) });
 
     const newItems: PdfItem[] = paths.map((p) => ({
       id: uuid(),
       type: "pdf",
       pdfPath: p,
+      rotation: 0,
     }));
 
     set((s) => ({
@@ -117,9 +136,11 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
   // ── removeItem ────────────────────────────────────────────────────────────
   removeItem: (id) => {
+    const item = get().items.find((i) => i.id === id);
+    logger.action("removeItem", { id, type: item?.type });
     set((s) => ({
       items: s.items.filter((i) => i.id !== id),
-      selectedSlideIds: new Set([...s.selectedSlideIds].filter((sid) => sid !== id)),
+      selectedIds: new Set([...s.selectedIds].filter((sid) => sid !== id)),
     }));
   },
 
@@ -153,6 +174,19 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     });
   },
 
+  // ── rotateItems ───────────────────────────────────────────────────────────
+  rotateItems: (ids) => {
+    logger.action("rotateItems", { count: ids.length, ids });
+    const idSet = new Set(ids);
+    set((s) => ({
+      items: s.items.map((item) => {
+        if (!idSet.has(item.id)) return item;
+        const next = ((item.rotation + 90) % 360) as Rotation;
+        return { ...item, rotation: next };
+      }),
+    }));
+  },
+
   // ── generate ─────────────────────────────────────────────────────────────
   generate: async () => {
     const { items, slidePdf, lastOutputPath } = get();
@@ -170,6 +204,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       }
     }
 
+    logger.action("generate", { itemCount: items.length });
     set({ status: "merging", statusMessage: strings.status.preparingMerge });
 
     try {
@@ -193,11 +228,19 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         if (item.type === "pdf") {
           const doc = await loadDoc(item.pdfPath);
           const pages = await merged.copyPages(doc, doc.getPageIndices());
-          pages.forEach((p: PDFPage) => merged.addPage(p));
+          pages.forEach((p: PDFPage) => {
+            if (item.rotation !== 0) {
+              p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+            }
+            merged.addPage(p);
+          });
         } else {
           if (!slidePdf) continue;
           const doc = await loadDoc(slidePdf);
           const [page] = await merged.copyPages(doc, [item.slideIndex]);
+          if (item.rotation !== 0) {
+            page.setRotation(degrees((page.getRotation().angle + item.rotation) % 360));
+          }
           merged.addPage(page);
         }
         processed += 1;
@@ -207,12 +250,14 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       const bytes = await merged.save();
       await writeFile(outputPath, bytes);
 
+      logger.info("generate", `PDF saved → ${outputPath}`);
       set({
         status: "idle",
         statusMessage: strings.status.pdfSaved(outputPath),
         lastOutputPath: outputPath,
       });
     } catch (e) {
+      logger.error("generate", e);
       set({ status: "error", statusMessage: String(e) });
     }
   },

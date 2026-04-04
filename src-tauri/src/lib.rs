@@ -101,12 +101,18 @@ fn get_google_drive_path() -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|_app| {
             temp::init()?;
+            log::info!("App started — temp dir: {}", temp::get().display());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

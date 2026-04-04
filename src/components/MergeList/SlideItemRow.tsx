@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Props) {
-  const { slidePdf, removeItem } = useMergeStore();
+  const { slidePdf, removeItem, rotateItems, selectedIds } = useMergeStore();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
@@ -50,12 +50,18 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
         ⠿
       </span>
 
-      <div onClick={(e) => e.stopPropagation()}>
-        <ZoomThumb
-          pdfPath={slidePdf}
-          pageIndex={item.slideIndex}
-          alt={strings.slideItem.label(item.slideIndex + 1)}
-        />
+      <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ transform: `rotate(${item.rotation}deg)`, transition: "transform 0.2s" }}>
+          <ZoomThumb
+            pdfPath={slidePdf}
+            pageIndex={item.slideIndex}
+            alt={strings.slideItem.label(item.slideIndex + 1)}
+            rotation={item.rotation}
+          />
+        </div>
+        {item.rotation !== 0 && (
+          <span style={styles.rotationBadge}>{item.rotation}°</span>
+        )}
       </div>
 
       <span style={styles.label}>{strings.slideItem.label(item.slideIndex + 1)}</span>
@@ -63,6 +69,25 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
       {isGroupFollower && (
         <span style={styles.followerTag}>{strings.slideItem.followerTag}</span>
       )}
+
+      <button
+        style={styles.rotate}
+        onClick={(e) => {
+          e.stopPropagation();
+          const ids = selected && selectedIds.size > 1
+            ? [...selectedIds]
+            : [item.id];
+          rotateItems(ids);
+        }}
+        onDoubleClick={(e) => e.stopPropagation()}
+        title={
+          selected && selectedIds.size > 1
+            ? strings.slideItem.rotateTooltipMulti(selectedIds.size)
+            : strings.slideItem.rotateTooltip
+        }
+      >
+        ↻
+      </button>
 
       <button
         style={styles.remove}
@@ -118,6 +143,27 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 16,
     padding: "0 4px",
     flexShrink: 0,
+  },
+  rotate: {
+    background: "none",
+    border: "none",
+    color: "#7aaacc",
+    cursor: "pointer",
+    fontSize: 16,
+    padding: "2px 6px",
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  rotationBadge: {
+    position: "absolute" as const,
+    bottom: 2,
+    right: 2,
+    background: "rgba(0,0,0,0.65)",
+    color: "#fff",
+    fontSize: 9,
+    padding: "1px 3px",
+    borderRadius: 3,
+    pointerEvents: "none" as const,
   },
   label: {
     flex: 1,
