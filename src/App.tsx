@@ -3,33 +3,37 @@ import { MergeList } from "./components/MergeList/MergeList";
 import { StatusBar } from "./components/StatusBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { useMergeStore } from "./store/useMergeStore";
+import { ThemeContext, useThemeProvider } from "./hooks/useTheme";
 
 export default function App() {
   const { selectedIds, clearSelection } = useMergeStore();
   const selectionCount = selectedIds.size;
+  const themeValue = useThemeProvider();
 
   return (
-    <div style={styles.app}>
-      <TopBar />
-      <UpdateBanner />
+    <ThemeContext.Provider value={themeValue}>
+      <div style={styles.app}>
+        <TopBar />
+        <UpdateBanner />
 
-      {selectionCount > 1 && (
-        <div style={styles.selectionBanner}>
-          <span>
-            {selectionCount} éléments sélectionnés — déplacez l'un pour les déplacer tous
-          </span>
-          <button style={styles.clearBtn} onClick={clearSelection}>
-            Désélectionner
-          </button>
-        </div>
-      )}
+        {selectionCount > 1 && (
+          <div style={styles.selectionBanner}>
+            <span>
+              {selectionCount} éléments sélectionnés — déplacez l'un pour les déplacer tous
+            </span>
+            <button style={styles.clearBtn} onClick={clearSelection}>
+              Désélectionner
+            </button>
+          </div>
+        )}
 
-      <main style={styles.main}>
-        <MergeList />
-      </main>
+        <main style={styles.main}>
+          <MergeList />
+        </main>
 
-      <StatusBar />
-    </div>
+        <StatusBar />
+      </div>
+    </ThemeContext.Provider>
   );
 }
 
@@ -38,8 +42,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     height: "100vh",
-    background: "#1e1e1e",
-    color: "#ddd",
+    background: "var(--bg-app)",
+    color: "var(--text-primary)",
     fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     overflow: "hidden",
   },
@@ -48,18 +52,18 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "6px 16px",
-    background: "#1a3a5c",
-    borderBottom: "1px solid #4a9eff",
+    background: "var(--selection-bg)",
+    borderBottom: "1px solid var(--selection-border)",
     fontSize: 13,
-    color: "#88ccff",
+    color: "var(--selection-text)",
     flexShrink: 0,
     userSelect: "none",
   },
   clearBtn: {
     background: "none",
-    border: "1px solid #4a7aaa",
+    border: "1px solid var(--selection-border)",
     borderRadius: 4,
-    color: "#88aacc",
+    color: "var(--selection-text)",
     cursor: "pointer",
     fontSize: 12,
     padding: "2px 10px",

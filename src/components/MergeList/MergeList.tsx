@@ -140,7 +140,7 @@ const styles: Record<string, React.CSSProperties> = {
     userSelect: "none",
   },
   empty: {
-    color: "#555",
+    color: "var(--text-empty)",
     fontStyle: "italic",
     textAlign: "center",
     paddingTop: 60,
