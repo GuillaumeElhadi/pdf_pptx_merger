@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.7.0...v3.8.0) (2026-04-05)
+
+
+### Features
+
+* add application version information ([#25](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/25)) ([f8f1f55](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/f8f1f55063b2c33e1a2cfd67c04cffcbebeba966))
+
 ## [3.7.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.6.1...v3.7.0) (2026-04-05)
 
 
