@@ -98,10 +98,19 @@ jobs:
           echo "=== Assets currently in release ==="
           gh api repos/${REPO}/releases/${RELEASE_ID}/assets --jq '.[].name'
 
-          # Find the .app.tar.gz asset (whatever its exact name)
+          NEW_NAME="pdf-merger_${VERSION}_aarch64.app.tar.gz"
+
+          # Delete stale versioned asset if it already exists (previous workflow run)
+          STALE_ID=$(gh api repos/${REPO}/releases/${RELEASE_ID}/assets \
+            --jq ".[] | select(.name == \"${NEW_NAME}\") | .id")
+          if [ -n "$STALE_ID" ] && [ "$STALE_ID" != "null" ]; then
+            gh api repos/${REPO}/releases/assets/${STALE_ID} -X DELETE
+            echo "Deleted stale asset: $NEW_NAME"
+          fi
+
+          # Find the unversioned .app.tar.gz just uploaded by tauri-apps/tauri-action
           OLD_NAME=$(gh api repos/${REPO}/releases/${RELEASE_ID}/assets \
             --jq '[.[] | select(.name | endswith(".app.tar.gz"))] | first | .name')
-          NEW_NAME="pdf-merger_${VERSION}_aarch64.app.tar.gz"
 
           if [ -z "$OLD_NAME" ] || [ "$OLD_NAME" = "null" ]; then
             echo "WARNING: no .app.tar.gz asset found in release"
