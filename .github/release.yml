@@ -1,0 +1,13 @@
+changelog:
+  categories:
+    - title: "Nouvelles fonctionnalités"
+      labels:
+        - feat
+    - title: "Corrections de bugs"
+      labels:
+        - fix
+    - title: "Autres changements"
+      labels:
+        - chore
+        - ci
+        - docs

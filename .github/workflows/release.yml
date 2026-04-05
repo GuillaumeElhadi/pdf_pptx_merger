@@ -82,3 +82,37 @@ jobs:
         with:
           releaseId: ${{ github.event.release.id || inputs.release_id }}
           args: ${{ matrix.args }}
+
+  update-release-notes:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append installation instructions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ github.event.release.id || inputs.release_id }}
+        run: |
+          CURRENT_BODY=$(gh api repos/${{ github.repository }}/releases/$RELEASE_ID --jq '.body')
+          NEW_BODY="$CURRENT_BODY
+
+          ---
+
+          ## Installation
+
+          ### Windows
+          Télécharge et exécute le fichier \`.msi\` ou \`.exe\`.
+
+          ### macOS (Apple Silicon)
+          1. Télécharge et décompresse le fichier \`.tar.gz\`
+          2. Déplace \`pdf-merger.app\` dans ton dossier \`Applications\`
+          3. Exécute cette commande dans le Terminal pour débloquer l'app :
+          \`\`\`bash
+          xattr -cr /Applications/pdf-merger.app
+          \`\`\`
+          4. Lance l'app normalement
+
+          > macOS bloque les applications non signées par défaut. Cette commande supprime l'attribut de quarantaine."
+
+          gh api repos/${{ github.repository }}/releases/$RELEASE_ID \
+            -X PATCH \
+            -f body="$NEW_BODY"
