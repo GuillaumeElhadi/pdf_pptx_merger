@@ -6,10 +6,10 @@ export function StatusBar() {
 
   const color =
     status === "error"
-      ? "#ff6b6b"
+      ? "var(--error)"
       : status === "converting" || status === "merging"
       ? "#f0a020"
-      : "#888";
+      : "var(--text-muted)";
 
   return (
     <div style={styles.bar}>
@@ -32,8 +32,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 8,
     padding: "4px 16px",
-    background: "#141414",
-    borderTop: "1px solid #222",
+    background: "var(--bg-statusbar)",
+    borderTop: "1px solid var(--border-statusbar)",
     minHeight: 28,
   },
   spinner: { fontSize: 12 },
@@ -46,8 +46,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   dismiss: {
     background: "none",
-    border: "1px solid #ff6b6b",
-    color: "#ff6b6b",
+    border: "1px solid var(--error)",
+    color: "var(--error)",
     borderRadius: 3,
     padding: "1px 8px",
     fontSize: 11,

@@ -1,0 +1,76 @@
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
+  --bg-app: #1e1e1e;
+  --bg-bar: #252525;
+  --bg-statusbar: #141414;
+  --bg-item-pdf: #2a2a2a;
+  --bg-item-slide: #1e3048;
+  --bg-item-pdf-selected: #3a3a2a;
+  --bg-item-slide-selected: #1a3a5c;
+  --border-bar: #333;
+  --border-statusbar: #222;
+  --border-item-pdf: #383838;
+  --border-item-slide: #2a4a6a;
+  --text-primary: #ddd;
+  --text-muted: #888;
+  --text-empty: #555;
+  --text-title: #fff;
+  --text-slide: #88ccff;
+  --text-handle-pdf: #555;
+  --text-handle-slide: #4a7aaa;
+  --text-rotate-slide: #7aaacc;
+  --accent: #4a9eff;
+  --btn-bg: #3a3a3a;
+  --btn-text: #ddd;
+  --btn-drive-bg: #2d6a2d;
+  --btn-generate-bg: #c05000;
+  --selection-bg: #1a3a5c;
+  --selection-border: #4a9eff;
+  --selection-text: #88ccff;
+  --update-bg: #1a4a2a;
+  --update-border: #4aff8a;
+  --update-text: #88ffaa;
+  --update-btn-bg: #2a6a3a;
+  --error: #ff6b6b;
+  --rotation-badge-bg: rgba(0, 0, 0, 0.65);
+  --rotation-badge-text: #fff;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --bg-app: #f0f2f5;
+  --bg-bar: #ffffff;
+  --bg-statusbar: #ebebeb;
+  --bg-item-pdf: #ffffff;
+  --bg-item-slide: #e8f2ff;
+  --bg-item-pdf-selected: #fef9e8;
+  --bg-item-slide-selected: #cce0ff;
+  --border-bar: #e0e0e0;
+  --border-statusbar: #d4d4d4;
+  --border-item-pdf: #e0e0e0;
+  --border-item-slide: #b0cce8;
+  --text-primary: #222;
+  --text-muted: #777;
+  --text-empty: #aaa;
+  --text-title: #111;
+  --text-slide: #1a5a99;
+  --text-handle-pdf: #ccc;
+  --text-handle-slide: #5a88bb;
+  --text-rotate-slide: #5a88bb;
+  --accent: #1a7fe8;
+  --btn-bg: #e8e8e8;
+  --btn-text: #222;
+  --btn-drive-bg: #2d8a2d;
+  --btn-generate-bg: #d05800;
+  --selection-bg: #cce0ff;
+  --selection-border: #1a7fe8;
+  --selection-text: #1a5a99;
+  --update-bg: #d4f5e0;
+  --update-border: #00aa44;
+  --update-text: #006622;
+  --update-btn-bg: #2a8a3a;
+  --error: #cc2222;
+  --rotation-badge-bg: rgba(0, 0, 0, 0.45);
+  --rotation-badge-text: #fff;
+}

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import * as pdfjsLib from "pdfjs-dist";
 import App from "./App";
+import "./theme.css";
 
 // Configure pdfjs worker — must be set before any getDocument() call
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -13,8 +14,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const globalStyle = document.createElement("style");
 globalStyle.textContent = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #1e1e1e; color: #ddd; }
-  button:focus-visible { outline: 2px solid #4a9eff; }
+  body { background: var(--bg-app); color: var(--text-primary); }
+  button:focus-visible { outline: 2px solid var(--accent); }
   * { -webkit-user-select: none; user-select: none; }
   input, textarea { -webkit-user-select: text; user-select: text; }
 `;
