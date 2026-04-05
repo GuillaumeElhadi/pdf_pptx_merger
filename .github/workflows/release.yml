@@ -95,21 +95,32 @@ jobs:
           VERSION=$(echo "$TAG" | sed 's/^v//')
           REPO="${{ github.repository }}"
 
-          OLD_NAME="pdf-merger_aarch64.app.tar.gz"
+          echo "=== Assets currently in release ==="
+          gh api repos/${REPO}/releases/${RELEASE_ID}/assets --jq '.[].name'
+
+          # Find the .app.tar.gz asset (whatever its exact name)
+          OLD_NAME=$(gh api repos/${REPO}/releases/${RELEASE_ID}/assets \
+            --jq '[.[] | select(.name | endswith(".app.tar.gz"))] | first | .name')
           NEW_NAME="pdf-merger_${VERSION}_aarch64.app.tar.gz"
+
+          if [ -z "$OLD_NAME" ] || [ "$OLD_NAME" = "null" ]; then
+            echo "WARNING: no .app.tar.gz asset found in release"
+            exit 0
+          fi
+
+          if [ "$OLD_NAME" = "$NEW_NAME" ]; then
+            echo "Asset already correctly named: $OLD_NAME"
+            exit 0
+          fi
 
           ASSET_ID=$(gh api repos/${REPO}/releases/${RELEASE_ID}/assets \
             --jq ".[] | select(.name == \"${OLD_NAME}\") | .id")
 
-          if [ -n "$ASSET_ID" ]; then
-            gh api repos/${REPO}/releases/assets/${ASSET_ID} \
-              -X PATCH \
-              -f name="${NEW_NAME}" \
-              -f label="${NEW_NAME}"
-            echo "Renamed: $OLD_NAME → $NEW_NAME"
-          else
-            echo "WARNING: asset '$OLD_NAME' not found in release"
-          fi
+          gh api repos/${REPO}/releases/assets/${ASSET_ID} \
+            -X PATCH \
+            -f name="${NEW_NAME}" \
+            -f label="${NEW_NAME}"
+          echo "Renamed: $OLD_NAME → $NEW_NAME"
 
       - name: Collect and verify signatures
         shell: bash
