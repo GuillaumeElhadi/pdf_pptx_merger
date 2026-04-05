@@ -31,7 +31,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcyRUVFOEYxMDgxNUNEMDkKUldRSnpSVUk4ZWp1Y2loL0VxQXROR0NXaTVKK01RNTIybXdrdk45cGhQeWZvTnpONjAyN256cVoK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5RTQxNjcyRkRDRjhDODUKUldTRmpNLzljaGJrS2M1WEJUTkd1SFhSeG5qajhPbjFHMjNoTDN3Sk44TWxnZU5iY2RSOTlZZEoK",
       "endpoints": [
         "https://github.com/GuillaumeElhadi/pdf_pptx_merger/releases/latest/download/latest.json"
       ]

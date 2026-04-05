@@ -83,6 +83,145 @@ jobs:
           releaseId: ${{ github.event.release.id || inputs.release_id }}
           args: ${{ matrix.args }}
 
+      - name: Rename macOS asset to include version
+        if: matrix.label == 'macos-arm64'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_ID="${{ github.event.release.id || inputs.release_id }}"
+          RELEASE=$(gh api repos/${{ github.repository }}/releases/${RELEASE_ID})
+          TAG=$(echo "$RELEASE" | jq -r '.tag_name')
+          VERSION=$(echo "$TAG" | sed 's/^v//')
+          REPO="${{ github.repository }}"
+
+          OLD_NAME="pdf-merger_aarch64.app.tar.gz"
+          NEW_NAME="pdf-merger_${VERSION}_aarch64.app.tar.gz"
+
+          ASSET_ID=$(gh api repos/${REPO}/releases/${RELEASE_ID}/assets \
+            --jq ".[] | select(.name == \"${OLD_NAME}\") | .id")
+
+          if [ -n "$ASSET_ID" ]; then
+            gh api repos/${REPO}/releases/assets/${ASSET_ID} \
+              -X PATCH \
+              -f name="${NEW_NAME}" \
+              -f label="${NEW_NAME}"
+            echo "Renamed: $OLD_NAME → $NEW_NAME"
+          else
+            echo "WARNING: asset '$OLD_NAME' not found in release"
+          fi
+
+      - name: Collect and verify signatures
+        shell: bash
+        run: |
+          echo "=== Signature files found ==="
+          find src-tauri/target -name "*.sig" 2>/dev/null | while read f; do
+            SIZE=$(wc -c < "$f")
+            echo "$f ($SIZE bytes)"
+            if [ "$SIZE" -eq 0 ]; then
+              echo "ERROR: signature file is empty — signing key or password may be wrong"
+              exit 1
+            fi
+          done
+
+          mkdir -p /tmp/sigs
+          # macOS: .app.tar.gz.sig
+          find src-tauri/target -name "*.app.tar.gz.sig" 2>/dev/null \
+            -exec cp {} /tmp/sigs/macos.app.tar.gz.sig \; || true
+          # Windows: NSIS .exe.sig (not the .zip variant)
+          find src-tauri/target -path "*/nsis/*.exe.sig" 2>/dev/null \
+            -exec cp {} /tmp/sigs/windows-setup.exe.sig \; || true
+
+          echo "=== Collected for latest.json ==="
+          ls -la /tmp/sigs/
+
+      - name: Upload signatures as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signatures-${{ matrix.label }}
+          path: /tmp/sigs/
+          if-no-files-found: warn
+
+  ensure-latest-json:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if latest.json already uploaded
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_ID="${{ github.event.release.id || inputs.release_id }}"
+          EXISTS=$(gh api repos/${{ github.repository }}/releases/${RELEASE_ID}/assets \
+            --jq '[.[] | select(.name == "latest.json")] | length')
+          echo "exists=$EXISTS" >> $GITHUB_OUTPUT
+          echo "latest.json already in release: $EXISTS"
+
+      - name: Download all signature artifacts
+        if: steps.check.outputs.exists == '0'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: signatures-*
+          merge-multiple: true
+          path: /tmp/sigs/
+
+      - name: Generate and upload latest.json
+        if: steps.check.outputs.exists == '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_ID="${{ github.event.release.id || inputs.release_id }}"
+          RELEASE=$(gh api repos/${{ github.repository }}/releases/${RELEASE_ID})
+          TAG=$(echo "$RELEASE" | jq -r '.tag_name')
+          VERSION=$(echo "$TAG" | sed 's/^v//')
+          PUB_DATE=$(echo "$RELEASE" | jq -r '.published_at')
+          REPO="${{ github.repository }}"
+
+          echo "Building latest.json for version $VERSION"
+          ls -la /tmp/sigs/
+
+          PLATFORMS="{}"
+
+          # macOS arm64
+          SIG=/tmp/sigs/macos.app.tar.gz.sig
+          if [ -f "$SIG" ] && [ -s "$SIG" ]; then
+            SIG_CONTENT=$(cat "$SIG")
+            URL="https://github.com/${REPO}/releases/download/${TAG}/pdf-merger_${VERSION}_aarch64.app.tar.gz"
+            PLATFORMS=$(echo "$PLATFORMS" | jq \
+              --arg sig "$SIG_CONTENT" --arg url "$URL" \
+              '. + {"darwin-aarch64": {"signature": $sig, "url": $url}}')
+            echo "Added darwin-aarch64"
+          else
+            echo "WARNING: macOS signature missing or empty"
+          fi
+
+          # Windows x86_64
+          SIG=/tmp/sigs/windows-setup.exe.sig
+          if [ -f "$SIG" ] && [ -s "$SIG" ]; then
+            SIG_CONTENT=$(cat "$SIG")
+            URL="https://github.com/${REPO}/releases/download/${TAG}/pdf-merger_${VERSION}_x64-setup.exe"
+            PLATFORMS=$(echo "$PLATFORMS" | jq \
+              --arg sig "$SIG_CONTENT" --arg url "$URL" \
+              '. + {"windows-x86_64": {"signature": $sig, "url": $url}}')
+            echo "Added windows-x86_64"
+          else
+            echo "WARNING: Windows signature missing or empty"
+          fi
+
+          echo "$PLATFORMS" | jq \
+            --arg version "$VERSION" \
+            --arg pub_date "$PUB_DATE" \
+            '{"version": $version, "notes": "", "pub_date": $pub_date, "platforms": .}' \
+            > /tmp/latest.json
+
+          echo "=== Generated latest.json ==="
+          cat /tmp/latest.json
+
+          gh release upload "$TAG" /tmp/latest.json \
+            --repo "$REPO" \
+            --clobber
+          echo "Uploaded latest.json to release $TAG"
+
   update-release-notes:
     needs: build
     runs-on: ubuntu-latest
