@@ -189,6 +189,7 @@ jobs:
           REPO="${{ github.repository }}"
 
           echo "Building latest.json for version $VERSION"
+          mkdir -p /tmp/sigs/
           ls -la /tmp/sigs/
 
           PLATFORMS="{}"
