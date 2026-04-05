@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.6.1...v3.7.0) (2026-04-05)
+
+
+### Features
+
+* implement dark and light mode themes with context and CSS variables ([#23](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/23)) ([663ecd5](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/663ecd57a8165ab0c8f6bbffa0a1663a11a14371))
+
 ## [3.6.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.5.0...v3.6.0) (2026-04-04)
 
 
