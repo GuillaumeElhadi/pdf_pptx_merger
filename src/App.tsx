@@ -4,17 +4,25 @@ import { StatusBar } from "./components/StatusBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { useMergeStore } from "./store/useMergeStore";
 import { ThemeContext, useThemeProvider } from "./hooks/useTheme";
+import { useUpdater } from "./hooks/useUpdater";
 
 export default function App() {
   const { selectedIds, clearSelection } = useMergeStore();
   const selectionCount = selectedIds.size;
   const themeValue = useThemeProvider();
+  const { update, currentVersion, status, dismissed, dismiss, undismiss, install } = useUpdater();
 
   return (
     <ThemeContext.Provider value={themeValue}>
       <div style={styles.app}>
         <TopBar />
-        <UpdateBanner />
+        <UpdateBanner
+          update={update}
+          status={status}
+          dismissed={dismissed}
+          onInstall={install}
+          onDismiss={dismiss}
+        />
 
         {selectionCount > 1 && (
           <div style={styles.selectionBanner}>
@@ -31,7 +39,11 @@ export default function App() {
           <MergeList />
         </main>
 
-        <StatusBar />
+        <StatusBar
+          update={update}
+          currentVersion={currentVersion}
+          onUpdateClick={undismiss}
+        />
       </div>
     </ThemeContext.Provider>
   );
