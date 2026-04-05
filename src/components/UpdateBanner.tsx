@@ -1,37 +1,30 @@
-import { useEffect, useState } from "react";
-import { check, Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { Update } from "@tauri-apps/plugin-updater";
+import { UpdateStatus } from "../hooks/useUpdater";
 
-export function UpdateBanner() {
-  const [update, setUpdate] = useState<Update | null>(null);
-  const [status, setStatus] = useState<"idle" | "downloading" | "done">("idle");
+interface Props {
+  update: Update | null;
+  status: UpdateStatus;
+  dismissed: boolean;
+  onInstall: () => void;
+  onDismiss: () => void;
+}
 
-  useEffect(() => {
-    check().then(setUpdate).catch(() => {});
-  }, []);
-
-  if (!update) return null;
-
-  async function installUpdate() {
-    if (!update) return;
-    setStatus("downloading");
-    await update.downloadAndInstall();
-    setStatus("done");
-    await relaunch();
-  }
+export function UpdateBanner({ update, status, dismissed, onInstall, onDismiss }: Props) {
+  if (!update || dismissed) return null;
 
   return (
     <div style={styles.banner}>
       <span>
         Nouvelle version disponible : <strong>{update.version}</strong>
       </span>
-      <button
-        style={styles.btn}
-        onClick={installUpdate}
-        disabled={status !== "idle"}
-      >
-        {status === "downloading" ? "Téléchargement…" : "Mettre à jour"}
-      </button>
+      <div style={styles.actions}>
+        <button style={styles.dismissBtn} onClick={onDismiss} disabled={status !== "idle"}>
+          Plus tard
+        </button>
+        <button style={styles.btn} onClick={onInstall} disabled={status !== "idle"}>
+          {status === "downloading" ? "Téléchargement…" : "Mettre à jour"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -48,6 +41,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--update-text)",
     flexShrink: 0,
     userSelect: "none",
+  },
+  actions: {
+    display: "flex",
+    gap: 8,
+  },
+  dismissBtn: {
+    background: "none",
+    border: "1px solid var(--update-border)",
+    borderRadius: 4,
+    color: "var(--update-text)",
+    cursor: "pointer",
+    fontSize: 12,
+    padding: "2px 12px",
+    flexShrink: 0,
+    opacity: 0.7,
   },
   btn: {
     background: "var(--update-btn-bg)",
