@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.9.0...v3.9.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* add sync script for Tauri plugin version synchronization ([#29](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/29)) ([3545e13](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/3545e13976565cf21d4d7b4c4ded54548c314da7))
+
 ## [3.9.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.8.0...v3.9.0) (2026-04-12)
 
 
