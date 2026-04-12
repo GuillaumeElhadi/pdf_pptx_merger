@@ -26,6 +26,7 @@ interface MergeStore {
   // ── Status ────────────────────────────────────────────────────────────────
   status: AppStatus;
   statusMessage: string;
+  progress: number | null;
   lastOutputPath: string | null;
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   selectedIds: new Set(),
   status: "idle",
   statusMessage: strings.status.ready,
+  progress: null,
   lastOutputPath: null,
 
   setSelectedIds: (ids) => set({ selectedIds: ids }),
@@ -205,7 +207,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     }
 
     logger.action("generate", { itemCount: items.length });
-    set({ status: "merging", statusMessage: strings.status.preparingMerge });
+    set({ status: "merging", statusMessage: strings.status.preparingMerge, progress: 0 });
 
     try {
       const merged = await PDFDocument.create();
@@ -221,8 +223,21 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         return doc;
       };
 
-      let processed = 0;
-      const total = items.length;
+      // Pré-chargement et comptage du total de pages réelles
+      let totalPages = 0;
+      for (const item of items) {
+        if (item.type === "pdf") {
+          const doc = await loadDoc(item.pdfPath);
+          totalPages += doc.getPageCount();
+        } else {
+          totalPages += 1;
+        }
+      }
+      if (slidePdf && items.some((i) => i.type === "slide")) {
+        await loadDoc(slidePdf);
+      }
+
+      let processedPages = 0;
 
       for (const item of items) {
         if (item.type === "pdf") {
@@ -234,6 +249,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
             }
             merged.addPage(p);
           });
+          processedPages += doc.getPageCount();
         } else {
           if (!slidePdf) continue;
           const doc = await loadDoc(slidePdf);
@@ -242,9 +258,12 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
             page.setRotation(degrees((page.getRotation().angle + item.rotation) % 360));
           }
           merged.addPage(page);
+          processedPages += 1;
         }
-        processed += 1;
-        set({ statusMessage: strings.status.merging(processed, total) });
+        set({
+          statusMessage: strings.status.merging(processedPages, totalPages),
+          progress: processedPages / totalPages,
+        });
       }
 
       const bytes = await merged.save();
@@ -254,11 +273,12 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       set({
         status: "idle",
         statusMessage: strings.status.pdfSaved(outputPath),
+        progress: null,
         lastOutputPath: outputPath,
       });
     } catch (e) {
       logger.error("generate", e);
-      set({ status: "error", statusMessage: String(e) });
+      set({ status: "error", statusMessage: String(e), progress: null });
     }
   },
 

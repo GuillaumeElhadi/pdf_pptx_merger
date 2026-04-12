@@ -48,7 +48,7 @@ export const strings = {
     pdfsAdded: (count: number) =>
       `${count} PDF${count !== 1 ? "s" : ""} ajouté${count !== 1 ? "s" : ""}.`,
     preparingMerge: "Préparation de la fusion…",
-    merging: (done: number, total: number) => `Fusion… ${done}/${total}`,
+    merging: (done: number, total: number) => `Fusion… ${done}/${total} pages`,
     pdfSaved: (path: string) => `✓ PDF enregistré : ${path}`,
   },
 
