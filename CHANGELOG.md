@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.8.0...v3.9.0) (2026-04-12)
+
+
+### Features
+
+* add unit tests for useMergeStore and related utilities ([#27](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/27)) ([8ca1279](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/8ca1279a444fbabc566ba7fc1ea74aa8f04edccf))
+
 ## [3.8.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.7.0...v3.8.0) (2026-04-05)
 
 
