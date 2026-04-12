@@ -86,11 +86,7 @@ describe("renderPage — Z : premier rendu", () => {
 describe("renderPage — O : pipeline de rendu", () => {
   it("appelle page.render() et convertToBlob() exactement une fois", async () => {
     const page = setupPdfjs();
-    const mockCanvas = (global.OffscreenCanvas as ReturnType<typeof vi.fn>).mock
-      .results[0]?.value ?? { render: vi.fn(), convertToBlob: vi.fn() };
-
     await renderPage(freshPath(), 0, 160);
-
     expect(page.render).toHaveBeenCalledTimes(1);
   });
 
@@ -190,7 +186,8 @@ describe("renderPage — B : limites", () => {
     setupPdfjs(makePdfPage(300, 300));
     await renderPage(freshPath(), 0, 160);
 
-    const [w, h] = (global.OffscreenCanvas as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
+    const calls = (global.OffscreenCanvas as ReturnType<typeof vi.fn>).mock.calls;
+    const [w, h] = calls[calls.length - 1];
     expect(Number.isInteger(w)).toBe(true);
     expect(Number.isInteger(h)).toBe(true);
   });

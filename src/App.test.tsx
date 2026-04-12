@@ -14,7 +14,6 @@ import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { useMergeStore } from "./store/useMergeStore";
 import { resetStore } from "./test/helpers";
-import { strings } from "./strings";
 
 // ── Stubs composants enfants ──────────────────────────────────────────────────
 // Isolent App de toutes les dépendances de ses enfants (Bridge, dnd-kit, pdfjs…)

@@ -5,6 +5,7 @@ import { ThemeContext } from "../hooks/useTheme";
 import { useMergeStore } from "../store/useMergeStore";
 import { strings } from "../strings";
 import type { PdfItem, SlideItem } from "../types";
+import type { Update } from "@tauri-apps/plugin-updater";
 
 // ── Store reset ───────────────────────────────────────────────────────────────
 
@@ -67,11 +68,11 @@ export function DndWrapper({ children, ids }: { children: React.ReactNode; ids: 
 /**
  * Mock minimal d'un objet Update de @tauri-apps/plugin-updater.
  */
-export function makeUpdate(version = "9.9.9") {
+export function makeUpdate(version = "9.9.9"): Update {
   return {
     version,
     date: "2026-01-01T00:00:00Z",
     body: "",
     downloadAndInstall: vi.fn().mockResolvedValue(undefined),
-  };
+  } as unknown as Update;
 }

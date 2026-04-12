@@ -14,6 +14,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Types globaux Vitest (vi, describe, it, expect…) */
+    "types": ["vitest/globals"],
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,

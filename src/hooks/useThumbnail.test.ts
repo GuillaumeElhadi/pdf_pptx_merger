@@ -42,7 +42,7 @@ describe("useThumbnail — Z : pdfPath null", () => {
   it("passage de null → path déclenche le chargement", async () => {
     const { result, rerender } = renderHook(
       ({ path }: { path: string | null }) => useThumbnail(path),
-      { initialProps: { path: null } }
+      { initialProps: { path: null as string | null } }
     );
     expect(result.current.loading).toBe(false);
 
