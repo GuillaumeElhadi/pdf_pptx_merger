@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
-  const { status, statusMessage, clearError } = useMergeStore();
+  const { status, statusMessage, progress, clearError } = useMergeStore();
 
   const msgColor =
     status === "error"
@@ -26,6 +26,12 @@ export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
     : `Mise à jour disponible : v${update?.version}`;
 
   return (
+    <div style={styles.wrapper}>
+      {progress !== null && (
+        <div style={styles.progressTrack}>
+          <div style={{ ...styles.progressFill, width: `${Math.round(progress * 100)}%` }} />
+        </div>
+      )}
     <div style={styles.bar}>
       {(status === "converting" || status === "merging") && (
         <span style={styles.spinner}>⏳</span>
@@ -48,17 +54,30 @@ export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
         </button>
       )}
     </div>
+    </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  wrapper: {
+    background: "var(--bg-statusbar)",
+    borderTop: "1px solid var(--border-statusbar)",
+  },
+  progressTrack: {
+    height: 2,
+    background: "var(--border-statusbar)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    background: "#f0a020",
+    transition: "width 0.15s ease",
+  },
   bar: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     padding: "4px 16px",
-    background: "var(--bg-statusbar)",
-    borderTop: "1px solid var(--border-statusbar)",
     minHeight: 28,
   },
   spinner: { fontSize: 12 },

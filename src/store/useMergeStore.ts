@@ -26,6 +26,7 @@ interface MergeStore {
   // ── Status ────────────────────────────────────────────────────────────────
   status: AppStatus;
   statusMessage: string;
+  progress: number | null;
   lastOutputPath: string | null;
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   selectedIds: new Set(),
   status: "idle",
   statusMessage: strings.status.ready,
+  progress: null,
   lastOutputPath: null,
 
   setSelectedIds: (ids) => set({ selectedIds: ids }),
@@ -145,11 +147,26 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   },
 
   // ── reorderItems ──────────────────────────────────────────────────────────
+  /**
+   * Moves one or more items in the merge list when a drag ends.
+   *
+   * Single-item drag: delegates to @dnd-kit/sortable's `arrayMove`.
+   *
+   * Multi-select drag (selectedIds.size > 1 and activeId is in the selection):
+   *   1. Split the list into `selected` (the dragged bloc) and `others`.
+   *   2. Find where the drop target (`overId`) sits in `others`:
+   *      - If `overId` is itself selected (overInOthers === -1), place the
+   *        bloc at the end of the list.
+   *      - If dragging downward, insert the bloc *after* the target in `others`.
+   *      - If dragging upward, insert the bloc *before* the target.
+   *   3. Reconstruct the list as [others before pos] + selected + [others after pos].
+   */
   reorderItems: (activeId, overId, selectedIds?) => {
     set((s) => {
       if (selectedIds && selectedIds.size > 1 && selectedIds.has(activeId)) {
         const oldIndex = s.items.findIndex((i) => i.id === activeId);
         const newIndex = s.items.findIndex((i) => i.id === overId);
+        // draggingDown determines insertion side relative to the target in `others`
         const draggingDown = newIndex > oldIndex;
 
         const selected = s.items.filter((i) => selectedIds.has(i.id));
@@ -158,6 +175,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
         let pos: number;
         if (overInOthers === -1) {
+          // Drop target is inside the selection — place bloc at the end
           pos = others.length;
         } else if (draggingDown) {
           pos = overInOthers + 1;
@@ -188,6 +206,21 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   },
 
   // ── generate ─────────────────────────────────────────────────────────────
+  /**
+   * Produces the final merged PDF from the current `items` list.
+   *
+   * Two-pass strategy:
+   *   Pass 1 (preload) — iterates `items` to load every source PDF into
+   *   `pdfDocumentCache` and tally `totalPages` for the progress bar.
+   *   The slide PDF (if present) is also preloaded here so every `copyPages`
+   *   call in pass 2 is a synchronous cache hit.
+   *
+   *   Pass 2 (merge) — iterates `items` again, copying pages into `merged`
+   *   and applying any rotation. Progress is updated after each item.
+   *
+   * Each unique file path is fetched exactly once — `loadOrCacheDoc` returns
+   * the cached `PDFDocument` on subsequent calls.
+   */
   generate: async () => {
     const { items, slidePdf, lastOutputPath } = get();
     const hasPdf = items.some((i) => i.type === "pdf");
@@ -205,28 +238,43 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     }
 
     logger.action("generate", { itemCount: items.length });
-    set({ status: "merging", statusMessage: strings.status.preparingMerge });
+    set({ status: "merging", statusMessage: strings.status.preparingMerge, progress: 0 });
 
     try {
       const merged = await PDFDocument.create();
 
-      const docCache = new Map<string, PDFDocument>();
-      const loadDoc = async (path: string): Promise<PDFDocument> => {
-        const cached = docCache.get(path);
+      // Keyed by file path — each source PDF is loaded from disk exactly once
+      const pdfDocumentCache = new Map<string, PDFDocument>();
+      const loadOrCacheDoc = async (path: string): Promise<PDFDocument> => {
+        const cached = pdfDocumentCache.get(path);
         if (cached) return cached;
         const res = await fetch(convertFileSrc(path));
         const bytes = await res.arrayBuffer();
         const doc = await PDFDocument.load(bytes);
-        docCache.set(path, doc);
+        pdfDocumentCache.set(path, doc);
         return doc;
       };
 
-      let processed = 0;
-      const total = items.length;
+      // Pass 1: preload all source documents and count total pages for progress
+      let totalPages = 0;
+      for (const item of items) {
+        if (item.type === "pdf") {
+          const doc = await loadOrCacheDoc(item.pdfPath);
+          totalPages += doc.getPageCount();
+        } else {
+          totalPages += 1;
+        }
+      }
+      if (slidePdf && items.some((i) => i.type === "slide")) {
+        await loadOrCacheDoc(slidePdf);
+      }
+
+      // Pass 2: copy pages into the merged document, applying rotations
+      let mergedPageCount = 0;
 
       for (const item of items) {
         if (item.type === "pdf") {
-          const doc = await loadDoc(item.pdfPath);
+          const doc = await loadOrCacheDoc(item.pdfPath);
           const pages = await merged.copyPages(doc, doc.getPageIndices());
           pages.forEach((p: PDFPage) => {
             if (item.rotation !== 0) {
@@ -234,17 +282,21 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
             }
             merged.addPage(p);
           });
+          mergedPageCount += doc.getPageCount();
         } else {
           if (!slidePdf) continue;
-          const doc = await loadDoc(slidePdf);
+          const doc = await loadOrCacheDoc(slidePdf);
           const [page] = await merged.copyPages(doc, [item.slideIndex]);
           if (item.rotation !== 0) {
             page.setRotation(degrees((page.getRotation().angle + item.rotation) % 360));
           }
           merged.addPage(page);
+          mergedPageCount += 1;
         }
-        processed += 1;
-        set({ statusMessage: strings.status.merging(processed, total) });
+        set({
+          statusMessage: strings.status.merging(mergedPageCount, totalPages),
+          progress: mergedPageCount / totalPages,
+        });
       }
 
       const bytes = await merged.save();
@@ -254,11 +306,12 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       set({
         status: "idle",
         statusMessage: strings.status.pdfSaved(outputPath),
+        progress: null,
         lastOutputPath: outputPath,
       });
     } catch (e) {
       logger.error("generate", e);
-      set({ status: "error", statusMessage: String(e) });
+      set({ status: "error", statusMessage: String(e), progress: null });
     }
   },
 
