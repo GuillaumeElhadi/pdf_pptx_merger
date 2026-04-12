@@ -166,19 +166,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Check if latest.json already uploaded
-        id: check
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RELEASE_ID="${{ github.event.release.id || inputs.release_id }}"
-          EXISTS=$(gh api repos/${{ github.repository }}/releases/${RELEASE_ID}/assets \
-            --jq '[.[] | select(.name == "latest.json")] | length')
-          echo "exists=$EXISTS" >> $GITHUB_OUTPUT
-          echo "latest.json already in release: $EXISTS"
-
       - name: Download all signature artifacts
-        if: steps.check.outputs.exists == '0'
         uses: actions/download-artifact@v4
         with:
           pattern: signatures-*
@@ -186,7 +174,6 @@ jobs:
           path: /tmp/sigs/
 
       - name: Generate and upload latest.json
-        if: steps.check.outputs.exists == '0'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
