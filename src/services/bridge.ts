@@ -6,6 +6,11 @@ import { logger } from "../utils/logger";
 const PPTX_FILTER = [{ name: "PowerPoint", extensions: ["pptx", "ppt"] }];
 const PDF_FILTER = [{ name: "PDF", extensions: ["pdf"] }];
 
+/**
+ * Thin wrapper around Tauri's `invoke` that adds structured logging.
+ * Logs the command name and args before the call, then logs success or
+ * re-throws on failure so callers can handle errors uniformly.
+ */
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   logger.info("Bridge", `→ ${command}${args ? " " + JSON.stringify(args) : ""}`);
   try {

@@ -24,7 +24,8 @@ import { SlideItemRow } from "./SlideItemRow";
 export function MergeList() {
   const { items, selectedIds, setSelectedIds, clearSelection, reorderItems } =
     useMergeStore();
-  const lastClickedIdRef = useRef<string | null>(null);
+  // Tracks the last individually-clicked item, used as the anchor for shift+click range selection
+  const lastSelectedIdForRangeRef = useRef<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -40,7 +41,8 @@ export function MergeList() {
     const currentSelection = useMergeStore.getState().selectedIds;
     setActiveDragId(null);
     clearSelection();
-    lastClickedIdRef.current = null;
+    // Reset range anchor so the next click starts a fresh selection
+    lastSelectedIdForRangeRef.current = null;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     reorderItems(String(active.id), String(over.id), currentSelection);
@@ -51,8 +53,8 @@ export function MergeList() {
   const handleItemSelect = (itemId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (e.shiftKey && lastClickedIdRef.current) {
-      const idxA = items.findIndex((i) => i.id === lastClickedIdRef.current);
+    if (e.shiftKey && lastSelectedIdForRangeRef.current) {
+      const idxA = items.findIndex((i) => i.id === lastSelectedIdForRangeRef.current);
       const idxB = items.findIndex((i) => i.id === itemId);
       if (idxA !== -1 && idxB !== -1) {
         const lo = Math.min(idxA, idxB);
@@ -67,7 +69,7 @@ export function MergeList() {
     const next = new Set(selectedIds);
     next.has(itemId) ? next.delete(itemId) : next.add(itemId);
     setSelectedIds(next);
-    lastClickedIdRef.current = itemId;
+    lastSelectedIdForRangeRef.current = itemId;
   };
 
   if (items.length === 0) {
@@ -78,7 +80,9 @@ export function MergeList() {
     );
   }
 
-  const groupDragActive =
+  // True when a drag is in progress and the dragged item belongs to a multi-item selection.
+  // Used to render follower styling on the other selected items.
+  const isMultiSelectDragInProgress =
     activeDragId !== null &&
     selectedIds.has(activeDragId) &&
     selectedIds.size > 1;
@@ -105,7 +109,7 @@ export function MergeList() {
                 selected={selectedIds.has(item.id)}
                 onSelect={(e) => handleItemSelect(item.id, e)}
                 isGroupFollower={
-                  groupDragActive &&
+                  isMultiSelectDragInProgress &&
                   item.id !== activeDragId &&
                   selectedIds.has(item.id)
                 }
@@ -117,7 +121,7 @@ export function MergeList() {
                 selected={selectedIds.has(item.id)}
                 onSelect={(e) => handleItemSelect(item.id, e)}
                 isGroupFollower={
-                  groupDragActive &&
+                  isMultiSelectDragInProgress &&
                   item.id !== activeDragId &&
                   selectedIds.has(item.id)
                 }

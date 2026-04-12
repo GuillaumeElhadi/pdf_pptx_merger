@@ -1,20 +1,23 @@
 import * as pdfjsLib from "pdfjs-dist";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-// Module-level cache: key = `${path}#${pageIndex}` → PNG object URL
-const cache = new Map<string, string>();
+// Module-level cache: cacheKey = `${filePath}#${pageIndex}` → PNG object URL.
+// Entries persist for the lifetime of the app — pages are never re-rendered.
+const renderedPageCache = new Map<string, string>();
 
 /**
  * Renders a single page of a local PDF file as a PNG object URL.
- * Results are cached for the app lifetime — pages are never re-rendered.
+ *
+ * The rendered bitmap is cached by `filePath + pageIndex` — repeated calls
+ * with the same arguments return the existing URL without re-rendering.
  */
 export async function renderPage(
   filePath: string,
   pageIndex: number = 0,
   width: number = 160
 ): Promise<string> {
-  const key = `${filePath}#${pageIndex}`;
-  const cached = cache.get(key);
+  const cacheKey = `${filePath}#${pageIndex}`;
+  const cached = renderedPageCache.get(cacheKey);
   if (cached) return cached;
 
   // Convert the local absolute path to a URL Tauri's asset protocol can serve
@@ -40,6 +43,6 @@ export async function renderPage(
 
   const blob = await canvas.convertToBlob({ type: "image/png" });
   const objectUrl = URL.createObjectURL(blob);
-  cache.set(key, objectUrl);
+  renderedPageCache.set(cacheKey, objectUrl);
   return objectUrl;
 }
