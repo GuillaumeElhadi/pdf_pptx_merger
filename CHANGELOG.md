@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.9.1...v3.10.0) (2026-04-22)
+
+
+### Features
+
+* detect Copropriétaire owners from landscape PDFs ([#31](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/31)) ([0a30698](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/0a306980a4ca8c8551e2f45ae4b36e9800984166))
+
 ## [3.9.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.9.0...v3.9.1) (2026-04-12)
 
 
