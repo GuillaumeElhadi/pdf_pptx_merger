@@ -44,6 +44,9 @@ export const Bridge = {
   pickSaveLocation: (): Promise<string | null> =>
     save({ defaultPath: "merged.pdf", filters: PDF_FILTER }),
 
+  pickSaveDirectory: (): Promise<string | null> =>
+    open({ directory: true }) as Promise<string | null>,
+
   getGoogleDrivePath: (): Promise<string | null> => call("get_google_drive_path"),
 
   extractPdfPage: (pdfPath: string, pageIndex: number): Promise<string> =>

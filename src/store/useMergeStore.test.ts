@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useMergeStore } from "./useMergeStore";
 import { Bridge } from "../services/bridge";
+import type { ExtractionResult } from "../services/ownerExtractor";
 import type { PdfItem, SlideItem } from "../types";
 
 // Mock extractOwners so it doesn't load real PDFs
 vi.mock("../services/ownerExtractor", () => ({
-  extractOwners: vi.fn().mockResolvedValue([]),
+  extractOwners: vi.fn().mockResolvedValue({ owners: [], pageOwners: new Map() }),
 }));
 
 // Mock Bridge au niveau module — isole le store des appels natifs Tauri
@@ -232,7 +233,7 @@ describe("useMergeStore — addPdfs", () => {
 
   it("les items apparaissent immédiatement (owners undefined avant extraction)", async () => {
     // extractOwners ne se résout pas immédiatement — on vérifie l'état synchrone
-    let resolveExtraction!: (v: never[]) => void;
+    let resolveExtraction!: (v: ExtractionResult) => void;
     vi.mocked(extractOwners).mockReturnValue(
       new Promise((r) => {
         resolveExtraction = r;
@@ -247,13 +248,13 @@ describe("useMergeStore — addPdfs", () => {
     expect((items[0] as PdfItem).owners).toBeUndefined();
 
     // Let extraction finish
-    resolveExtraction([]);
+    resolveExtraction({ owners: [], pageOwners: new Map() });
     await Promise.resolve();
   });
 
   it("peuple owners une fois l'extraction terminée", async () => {
     const detected = [{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }];
-    vi.mocked(extractOwners).mockResolvedValue(detected);
+    vi.mocked(extractOwners).mockResolvedValue({ owners: detected, pageOwners: new Map() });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
     await useMergeStore.getState().addPdfs();
@@ -263,6 +264,22 @@ describe("useMergeStore — addPdfs", () => {
 
     const { items } = useMergeStore.getState();
     expect((items[0] as PdfItem).owners).toEqual(detected);
+  });
+
+  it("peuple pageOwners une fois l'extraction terminée", async () => {
+    const pageOwnersMap = new Map([[1, { code: "0000001", name: "OWNER A" }]]);
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [{ code: "0000001", name: "OWNER A" }],
+      pageOwners: pageOwnersMap,
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const item = useMergeStore.getState().items[0] as PdfItem;
+    expect(item.pageOwners).toEqual(pageOwnersMap);
   });
 
   it("laisse owners undefined et peuple ownersError si extractOwners lève une erreur", async () => {

@@ -9,9 +9,7 @@
     "opener:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [
-        { "path": "**" }
-      ]
+      "allow": [{ "path": "**" }]
     },
     "dialog:default",
     "shell:allow-execute",
@@ -19,6 +17,10 @@
     "fs:default",
     "fs:read-all",
     "fs:write-all",
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [{ "path": "**" }]
+    },
     "fs:allow-read-dir",
     "fs:allow-mkdir",
     "fs:allow-remove",

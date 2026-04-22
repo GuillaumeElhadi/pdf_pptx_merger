@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SlideItemRow } from "./SlideItemRow";
 import { useMergeStore } from "../../store/useMergeStore";
@@ -62,6 +62,36 @@ describe("SlideItemRow — interactions", () => {
     renderRow(0);
     await userEvent.click(screen.getByText("✕"));
     expect(useMergeStore.getState().items).toHaveLength(0);
+  });
+
+  it("pointerdown sur ✕ ne remonte pas au parent React (empêche le déclenchement du drag)", () => {
+    useMergeStore.setState({ items: [makeSlide("s", 0)] });
+    const parentSpy = vi.fn();
+    const item = makeSlide("s", 0);
+    const { getByText } = render(
+      <DndWrapper ids={["s"]}>
+        <div onPointerDown={parentSpy}>
+          <SlideItemRow item={item} selected={false} onSelect={() => {}} isGroupFollower={false} />
+        </div>
+      </DndWrapper>
+    );
+    fireEvent.pointerDown(getByText("✕"));
+    expect(parentSpy).not.toHaveBeenCalled();
+  });
+
+  it("pointerdown sur ↻ ne remonte pas au parent React (empêche le déclenchement du drag)", () => {
+    useMergeStore.setState({ items: [makeSlide("s", 0)] });
+    const parentSpy = vi.fn();
+    const item = makeSlide("s", 0);
+    const { getByText } = render(
+      <DndWrapper ids={["s"]}>
+        <div onPointerDown={parentSpy}>
+          <SlideItemRow item={item} selected={false} onSelect={() => {}} isGroupFollower={false} />
+        </div>
+      </DndWrapper>
+    );
+    fireEvent.pointerDown(getByText("↻"));
+    expect(parentSpy).not.toHaveBeenCalled();
   });
 
   it("le bouton ↻ applique une rotation de +90°", async () => {
