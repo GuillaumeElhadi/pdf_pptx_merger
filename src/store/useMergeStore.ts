@@ -5,7 +5,7 @@ import { PDFDocument, PDFPage, degrees } from "pdf-lib";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Bridge } from "../services/bridge";
-import { extractOwners, type OwnerInfo } from "../services/ownerExtractor";
+import { extractOwners } from "../services/ownerExtractor";
 import { strings } from "../strings";
 import { logger } from "../utils/logger";
 import type { AppStatus, MergeItem, PdfItem, Rotation, SlideItem } from "../types";
@@ -144,7 +144,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
           items: s.items.map((i) => (i.id === item.id ? { ...i, owners } : i)),
         }));
       } catch (e) {
-        logger.warn("addPdfs:extractOwners", { id: item.id, error: e });
+        logger.warn("addPdfs:extractOwners", `id=${item.id} — ${String(e)}`);
         set((s) => ({
           items: s.items.map((i) =>
             i.id === item.id ? { ...i, ownersError: String(e) } : i
