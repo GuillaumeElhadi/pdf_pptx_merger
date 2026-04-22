@@ -5,6 +5,7 @@ import { PDFDocument, PDFPage, degrees } from "pdf-lib";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Bridge } from "../services/bridge";
+import { extractOwners } from "../services/ownerExtractor";
 import { strings } from "../strings";
 import { logger } from "../utils/logger";
 import type { AppStatus, MergeItem, PdfItem, Rotation, SlideItem } from "../types";
@@ -121,7 +122,10 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       return;
     }
 
-    logger.action("addPdfs", { count: paths.length, files: paths.map((p) => p.split(/[\\/]/).pop()) });
+    logger.action("addPdfs", {
+      count: paths.length,
+      files: paths.map((p) => p.split(/[\\/]/).pop()),
+    });
 
     const newItems: PdfItem[] = paths.map((p) => ({
       id: uuid(),
@@ -134,6 +138,21 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       items: [...s.items, ...newItems],
       statusMessage: strings.status.pdfsAdded(newItems.length),
     }));
+
+    // Enrich each new PDF with owner info in the background (non-blocking)
+    newItems.forEach(async (item) => {
+      try {
+        const owners = await extractOwners(item.pdfPath);
+        set((s) => ({
+          items: s.items.map((i) => (i.id === item.id ? { ...i, owners } : i)),
+        }));
+      } catch (e) {
+        logger.warn("addPdfs:extractOwners", `id=${item.id} — ${String(e)}`);
+        set((s) => ({
+          items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
+        }));
+      }
+    });
   },
 
   // ── removeItem ────────────────────────────────────────────────────────────

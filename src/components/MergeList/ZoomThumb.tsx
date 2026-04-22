@@ -66,24 +66,24 @@ export function ZoomThumb({ pdfPath, pageIndex, alt, rotation = 0 }: Props) {
         )}
       </div>
 
-      {zoomPos && url && createPortal(
-        <div style={{ ...styles.overlay, top: zoomPos.top, left: zoomPos.left }}>
-          <img
-            src={url}
-            style={{
-              ...styles.zoomImg,
-              transform: `rotate(${rotation}deg)`,
-              // For 90°/270° rotations swap displayed dimensions so the rotated
-              // image fills the box without overflowing.
-              ...(rotation === 90 || rotation === 270
-                ? { width: ZOOM_H, height: ZOOM_W }
-                : {}),
-            }}
-            alt={alt}
-          />
-        </div>,
-        document.body
-      )}
+      {zoomPos &&
+        url &&
+        createPortal(
+          <div style={{ ...styles.overlay, top: zoomPos.top, left: zoomPos.left }}>
+            <img
+              src={url}
+              style={{
+                ...styles.zoomImg,
+                transform: `rotate(${rotation}deg)`,
+                // For 90°/270° rotations swap displayed dimensions so the rotated
+                // image fills the box without overflowing.
+                ...(rotation === 90 || rotation === 270 ? { width: ZOOM_H, height: ZOOM_W } : {}),
+              }}
+              alt={alt}
+            />
+          </div>,
+          document.body
+        )}
     </>
   );
 }

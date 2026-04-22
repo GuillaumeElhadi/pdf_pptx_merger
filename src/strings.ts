@@ -54,7 +54,8 @@ export const strings = {
 
   // Store — confirm dialogs
   confirm: {
-    replacePptx: "Charger un nouveau PowerPoint remplacera toutes les diapositives existantes. Continuer ?",
+    replacePptx:
+      "Charger un nouveau PowerPoint remplacera toutes les diapositives existantes. Continuer ?",
     reuseOutput: (path: string) => `Réutiliser le fichier de sortie précédent ?\n${path}`,
   },
 };

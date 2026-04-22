@@ -15,8 +15,8 @@ export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
     status === "error"
       ? "var(--error)"
       : status === "converting" || status === "merging"
-      ? "#f0a020"
-      : "var(--text-muted)";
+        ? "#f0a020"
+        : "var(--text-muted)";
 
   const isUpToDate = update === null;
   const dotColor = isUpToDate ? "#4caf50" : "#f0a020";
@@ -32,28 +32,28 @@ export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
           <div style={{ ...styles.progressFill, width: `${Math.round(progress * 100)}%` }} />
         </div>
       )}
-    <div style={styles.bar}>
-      {(status === "converting" || status === "merging") && (
-        <span style={styles.spinner}>⏳</span>
-      )}
-      <span style={{ ...styles.msg, color: msgColor }}>{statusMessage}</span>
-      {status === "error" && (
-        <button style={styles.dismiss} onClick={clearError}>
-          {strings.statusBar.dismiss}
-        </button>
-      )}
-      {versionLabel && (
-        <button
-          style={styles.versionBadge}
-          onClick={!isUpToDate ? onUpdateClick : undefined}
-          title={versionTitle}
-          disabled={isUpToDate}
-        >
-          <span style={{ ...styles.dot, background: dotColor }} />
-          {versionLabel}
-        </button>
-      )}
-    </div>
+      <div style={styles.bar}>
+        {(status === "converting" || status === "merging") && (
+          <span style={styles.spinner}>⏳</span>
+        )}
+        <span style={{ ...styles.msg, color: msgColor }}>{statusMessage}</span>
+        {status === "error" && (
+          <button style={styles.dismiss} onClick={clearError}>
+            {strings.statusBar.dismiss}
+          </button>
+        )}
+        {versionLabel && (
+          <button
+            style={styles.versionBadge}
+            onClick={!isUpToDate ? onUpdateClick : undefined}
+            title={versionTitle}
+            disabled={isUpToDate}
+          >
+            <span style={{ ...styles.dot, background: dotColor }} />
+            {versionLabel}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

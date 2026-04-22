@@ -4,7 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { ThemeContext } from "../hooks/useTheme";
 import { useMergeStore } from "../store/useMergeStore";
 import { strings } from "../strings";
-import type { PdfItem, SlideItem } from "../types";
+import type { OwnerInfo, PdfItem, SlideItem } from "../types";
 import type { Update } from "@tauri-apps/plugin-updater";
 
 // ── Store reset ───────────────────────────────────────────────────────────────
@@ -33,6 +33,10 @@ export function makeSlide(id: string, slideIndex = 0): SlideItem {
   return { id, type: "slide", slideIndex, rotation: 0 };
 }
 
+export function makeOwnerInfo(overrides?: Partial<OwnerInfo>): OwnerInfo {
+  return { code: "0000001", name: "S.A.S. IMMO. CARREFOUR", ...overrides };
+}
+
 // ── Wrappers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -53,9 +57,7 @@ export function ThemeWrapper({ children }: { children: React.ReactNode }) {
 export function DndWrapper({ children, ids }: { children: React.ReactNode; ids: string[] }) {
   // Distance très haute : le drag ne s'active jamais pendant les tests,
   // ce qui évite que dnd-kit intercepte les pointer events des boutons.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 999 } })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 999 } }));
   return (
     <DndContext sensors={sensors}>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>

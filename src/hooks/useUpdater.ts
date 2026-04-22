@@ -22,8 +22,12 @@ export function useUpdater(): UseUpdaterResult {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    getVersion().then(setCurrentVersion).catch(() => {});
-    check().then(setUpdate).catch(() => {});
+    getVersion()
+      .then(setCurrentVersion)
+      .catch(() => {});
+    check()
+      .then(setUpdate)
+      .catch(() => {});
   }, []);
 
   async function install() {

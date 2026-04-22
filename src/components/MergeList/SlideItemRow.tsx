@@ -17,8 +17,9 @@ interface Props {
 export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Props) {
   const { slidePdf, removeItem, rotateItems, selectedIds } = useMergeStore();
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: item.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
 
   const rowStyle: React.CSSProperties = {
     ...styles.row,
@@ -46,9 +47,7 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
     >
       {isGroupFollower && <div style={styles.followerBar} />}
 
-      <span style={styles.handle}>
-        ⠿
-      </span>
+      <span style={styles.handle}>⠿</span>
 
       <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ transform: `rotate(${item.rotation}deg)`, transition: "transform 0.2s" }}>
@@ -59,24 +58,18 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
             rotation={item.rotation}
           />
         </div>
-        {item.rotation !== 0 && (
-          <span style={styles.rotationBadge}>{item.rotation}°</span>
-        )}
+        {item.rotation !== 0 && <span style={styles.rotationBadge}>{item.rotation}°</span>}
       </div>
 
       <span style={styles.label}>{strings.slideItem.label(item.slideIndex + 1)}</span>
 
-      {isGroupFollower && (
-        <span style={styles.followerTag}>{strings.slideItem.followerTag}</span>
-      )}
+      {isGroupFollower && <span style={styles.followerTag}>{strings.slideItem.followerTag}</span>}
 
       <button
         style={styles.rotate}
         onClick={(e) => {
           e.stopPropagation();
-          const ids = selected && selectedIds.size > 1
-            ? [...selectedIds]
-            : [item.id];
+          const ids = selected && selectedIds.size > 1 ? [...selectedIds] : [item.id];
           rotateItems(ids);
         }}
         onDoubleClick={(e) => e.stopPropagation()}
@@ -91,7 +84,10 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
 
       <button
         style={styles.remove}
-        onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          removeItem(item.id);
+        }}
         title={strings.slideItem.removeTooltip}
       >
         ✕

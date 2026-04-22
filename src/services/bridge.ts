@@ -25,12 +25,10 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export const Bridge = {
   /** Convert PPTX to a single merged PDF. Returns the output PDF path. */
-  convertPptx: (pptxPath: string): Promise<string> =>
-    call("convert_pptx", { pptxPath }),
+  convertPptx: (pptxPath: string): Promise<string> => call("convert_pptx", { pptxPath }),
 
   /** Number of pages in a PDF without splitting. */
-  getPdfPageCount: (pdfPath: string): Promise<number> =>
-    call("get_pdf_page_count", { pdfPath }),
+  getPdfPageCount: (pdfPath: string): Promise<number> => call("get_pdf_page_count", { pdfPath }),
 
   /** Returns the app temp directory path (for loading local files in pdfjs). */
   getTempDir: (): Promise<string> => call("get_temp_dir"),
@@ -46,8 +44,7 @@ export const Bridge = {
   pickSaveLocation: (): Promise<string | null> =>
     save({ defaultPath: "merged.pdf", filters: PDF_FILTER }),
 
-  getGoogleDrivePath: (): Promise<string | null> =>
-    call("get_google_drive_path"),
+  getGoogleDrivePath: (): Promise<string | null> => call("get_google_drive_path"),
 
   extractPdfPage: (pdfPath: string, pageIndex: number): Promise<string> =>
     call("extract_pdf_page", { pdfPath, pageIndex }),

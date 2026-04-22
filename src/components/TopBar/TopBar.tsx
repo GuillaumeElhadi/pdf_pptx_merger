@@ -45,11 +45,7 @@ export function TopBar() {
         </div>
 
         <div style={styles.btnGroup}>
-          <button
-            style={styles.btn}
-            onClick={() => addPdfs()}
-            disabled={busy}
-          >
+          <button style={styles.btn} onClick={() => addPdfs()} disabled={busy}>
             {strings.topBar.addPdfs}
           </button>
           {googleDrivePath && (

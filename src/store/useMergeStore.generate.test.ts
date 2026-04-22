@@ -168,9 +168,7 @@ describe("generate — O : un seul PDF", () => {
     useMergeStore.setState({ items: [makePdf("a")] });
     await useMergeStore.getState().generate();
 
-    expect(useMergeStore.getState().statusMessage).toBe(
-      strings.status.pdfSaved("/out/result.pdf")
-    );
+    expect(useMergeStore.getState().statusMessage).toBe(strings.status.pdfSaved("/out/result.pdf"));
   });
 
   it("addPage appelé exactement une fois pour un PDF d'une page", async () => {

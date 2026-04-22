@@ -1,5 +1,6 @@
 import { TopBar } from "./components/TopBar/TopBar";
 import { MergeList } from "./components/MergeList/MergeList";
+import { OwnerBanner } from "./components/OwnerBanner";
 import { StatusBar } from "./components/StatusBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { useMergeStore } from "./store/useMergeStore";
@@ -35,15 +36,13 @@ export default function App() {
           </div>
         )}
 
+        <OwnerBanner />
+
         <main style={styles.main}>
           <MergeList />
         </main>
 
-        <StatusBar
-          update={update}
-          currentVersion={currentVersion}
-          onUpdateClick={undismiss}
-        />
+        <StatusBar update={update} currentVersion={currentVersion} onUpdateClick={undismiss} />
       </div>
     </ThemeContext.Provider>
   );

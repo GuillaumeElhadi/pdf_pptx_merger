@@ -3,6 +3,11 @@ import { useMergeStore } from "./useMergeStore";
 import { Bridge } from "../services/bridge";
 import type { PdfItem, SlideItem } from "../types";
 
+// Mock extractOwners so it doesn't load real PDFs
+vi.mock("../services/ownerExtractor", () => ({
+  extractOwners: vi.fn().mockResolvedValue([]),
+}));
+
 // Mock Bridge au niveau module — isole le store des appels natifs Tauri
 vi.mock("../services/bridge", () => ({
   Bridge: {
@@ -17,6 +22,8 @@ vi.mock("../services/bridge", () => ({
     openFile: vi.fn(),
   },
 }));
+
+import { extractOwners } from "../services/ownerExtractor";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -221,6 +228,54 @@ describe("useMergeStore — addPdfs", () => {
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/nouveau.pdf"]);
     await useMergeStore.getState().addPdfs();
     expect(useMergeStore.getState().items).toHaveLength(2);
+  });
+
+  it("les items apparaissent immédiatement (owners undefined avant extraction)", async () => {
+    // extractOwners ne se résout pas immédiatement — on vérifie l'état synchrone
+    let resolveExtraction!: (v: never[]) => void;
+    vi.mocked(extractOwners).mockReturnValue(
+      new Promise((r) => {
+        resolveExtraction = r;
+      })
+    );
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+    // Items are in the store, owners not yet set
+    const { items } = useMergeStore.getState();
+    expect(items).toHaveLength(1);
+    expect((items[0] as PdfItem).owners).toBeUndefined();
+
+    // Let extraction finish
+    resolveExtraction([]);
+    await Promise.resolve();
+  });
+
+  it("peuple owners une fois l'extraction terminée", async () => {
+    const detected = [{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }];
+    vi.mocked(extractOwners).mockResolvedValue(detected);
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+    // Allow the background microtask to settle
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const { items } = useMergeStore.getState();
+    expect((items[0] as PdfItem).owners).toEqual(detected);
+  });
+
+  it("laisse owners undefined et peuple ownersError si extractOwners lève une erreur", async () => {
+    vi.mocked(extractOwners).mockRejectedValue(new Error("échec extraction"));
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const item = useMergeStore.getState().items[0] as PdfItem;
+    expect(item.owners).toBeUndefined();
+    expect(item.ownersError).toMatch(/échec extraction/);
   });
 });
 

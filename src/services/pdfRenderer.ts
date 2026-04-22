@@ -24,25 +24,27 @@ export async function renderPage(
   const url = convertFileSrc(filePath);
 
   const pdf = await pdfjsLib.getDocument(url).promise;
-  const page = await pdf.getPage(pageIndex + 1); // pdfjs is 1-based
 
-  const viewport = page.getViewport({ scale: 1 });
-  const scale = width / viewport.width;
-  const scaled = page.getViewport({ scale });
+  try {
+    const page = await pdf.getPage(pageIndex + 1); // pdfjs is 1-based
 
-  const canvas = new OffscreenCanvas(
-    Math.floor(scaled.width),
-    Math.floor(scaled.height)
-  );
-  const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
+    const viewport = page.getViewport({ scale: 1 });
+    const scale = width / viewport.width;
+    const scaled = page.getViewport({ scale });
 
-  await page.render({
-    canvasContext: ctx as unknown as CanvasRenderingContext2D,
-    viewport: scaled,
-  }).promise;
+    const canvas = new OffscreenCanvas(Math.floor(scaled.width), Math.floor(scaled.height));
+    const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
 
-  const blob = await canvas.convertToBlob({ type: "image/png" });
-  const objectUrl = URL.createObjectURL(blob);
-  renderedPageCache.set(cacheKey, objectUrl);
-  return objectUrl;
+    await page.render({
+      canvasContext: ctx as unknown as CanvasRenderingContext2D,
+      viewport: scaled,
+    }).promise;
+
+    const blob = await canvas.convertToBlob({ type: "image/png" });
+    const objectUrl = URL.createObjectURL(blob);
+    renderedPageCache.set(cacheKey, objectUrl);
+    return objectUrl;
+  } finally {
+    await pdf.destroy();
+  }
 }

@@ -63,7 +63,10 @@ describe("StatusBar — état error", () => {
 
 describe("StatusBar — état converting", () => {
   it("affiche le spinner et le message", () => {
-    useMergeStore.setState({ status: "converting", statusMessage: "Conversion du PowerPoint en cours…" });
+    useMergeStore.setState({
+      status: "converting",
+      statusMessage: "Conversion du PowerPoint en cours…",
+    });
     render(<StatusBar update={null} currentVersion="3.8.0" onUpdateClick={() => {}} />);
     expect(screen.getByText("⏳")).toBeInTheDocument();
     expect(screen.getByText("Conversion du PowerPoint en cours…")).toBeInTheDocument();

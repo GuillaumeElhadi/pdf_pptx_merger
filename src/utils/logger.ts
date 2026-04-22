@@ -6,9 +6,7 @@ function fmt(context: string, msg: string) {
 
 export const logger = {
   action: (name: string, details?: Record<string, unknown>) => {
-    const msg = details
-      ? `${name} — ${JSON.stringify(details)}`
-      : name;
+    const msg = details ? `${name} — ${JSON.stringify(details)}` : name;
     info(fmt("ACTION", msg)).catch(() => console.info(fmt("ACTION", msg)));
   },
 
