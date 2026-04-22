@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.11.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.10.0...v3.11.0) (2026-04-22)
+
+
+### Features
+
+* generate one PDF per owner with directory picker and snake_casenaming ([#34](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/34)) ([eb66e1a](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/eb66e1a677600c750830cf05b392b7a0f4766101))
+
 ## [3.10.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.9.1...v3.10.0) (2026-04-22)
 
 
