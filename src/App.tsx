@@ -42,11 +42,7 @@ export default function App() {
           <MergeList />
         </main>
 
-        <StatusBar
-          update={update}
-          currentVersion={currentVersion}
-          onUpdateClick={undismiss}
-        />
+        <StatusBar update={update} currentVersion={currentVersion} onUpdateClick={undismiss} />
       </div>
     </ThemeContext.Provider>
   );

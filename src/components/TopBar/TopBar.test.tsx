@@ -21,7 +21,11 @@ vi.mock("../../services/bridge", () => ({
 
 // TopBar utilise useTheme — on l'enveloppe dans ThemeWrapper
 function renderTopBar() {
-  return render(<ThemeWrapper><TopBar /></ThemeWrapper>);
+  return render(
+    <ThemeWrapper>
+      <TopBar />
+    </ThemeWrapper>
+  );
 }
 
 beforeEach(resetStore);

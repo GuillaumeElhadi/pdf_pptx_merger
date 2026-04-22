@@ -23,12 +23,12 @@ export function OwnerBanner() {
   const names = owners.map((o) => o.name).join(" · ");
 
   return (
-    <div style={{ ...styles.banner, ...(isMultiple ? styles.bannerMultiple : styles.bannerSingle) }}>
+    <div
+      style={{ ...styles.banner, ...(isMultiple ? styles.bannerMultiple : styles.bannerSingle) }}
+    >
       <span style={styles.icon}>{isMultiple ? "⚠" : "✓"}</span>
       <span style={styles.label}>
-        {isMultiple
-          ? `${owners.length} copropriétaires : ${names}`
-          : `Copropriétaire : ${names}`}
+        {isMultiple ? `${owners.length} copropriétaires : ${names}` : `Copropriétaire : ${names}`}
       </span>
     </div>
   );

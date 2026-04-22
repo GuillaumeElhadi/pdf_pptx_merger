@@ -57,9 +57,7 @@ export function ThemeWrapper({ children }: { children: React.ReactNode }) {
 export function DndWrapper({ children, ids }: { children: React.ReactNode; ids: string[] }) {
   // Distance très haute : le drag ne s'active jamais pendant les tests,
   // ce qui évite que dnd-kit intercepte les pointer events des boutons.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 999 } })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 999 } }));
   return (
     <DndContext sensors={sensors}>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>

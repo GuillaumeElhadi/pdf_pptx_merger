@@ -55,9 +55,7 @@ beforeEach(() => {
   // OffscreenCanvas n'existe pas dans jsdom — on le simule
   global.OffscreenCanvas = vi.fn().mockImplementation(() => ({
     getContext: vi.fn().mockReturnValue({}),
-    convertToBlob: vi
-      .fn()
-      .mockResolvedValue(new Blob(["PNG"], { type: "image/png" })),
+    convertToBlob: vi.fn().mockResolvedValue(new Blob(["PNG"], { type: "image/png" })),
   })) as any;
 
   // URL.createObjectURL n'est pas implémenté dans jsdom
@@ -124,9 +122,7 @@ describe("renderPage — M : comportement du cache", () => {
     const page0 = makePdfPage();
     const page1 = makePdfPage();
     const doc = {
-      getPage: vi.fn()
-        .mockResolvedValueOnce(page0)
-        .mockResolvedValueOnce(page1),
+      getPage: vi.fn().mockResolvedValueOnce(page0).mockResolvedValueOnce(page1),
       destroy: vi.fn().mockResolvedValue(undefined),
     };
     vi.mocked(pdfjsLib.getDocument)
@@ -145,7 +141,10 @@ describe("renderPage — M : comportement du cache", () => {
 
 describe("renderPage — B : limites", () => {
   it("pageIndex 0 → pdfjs.getPage appelé avec 1 (conversion 0-based → 1-based)", async () => {
-    const doc = { getPage: vi.fn().mockResolvedValue(makePdfPage()), destroy: vi.fn().mockResolvedValue(undefined) };
+    const doc = {
+      getPage: vi.fn().mockResolvedValue(makePdfPage()),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    };
     vi.mocked(pdfjsLib.getDocument).mockReturnValue({
       promise: Promise.resolve(doc),
     } as any);
@@ -156,7 +155,10 @@ describe("renderPage — B : limites", () => {
   });
 
   it("pageIndex 4 → pdfjs.getPage appelé avec 5", async () => {
-    const doc = { getPage: vi.fn().mockResolvedValue(makePdfPage()), destroy: vi.fn().mockResolvedValue(undefined) };
+    const doc = {
+      getPage: vi.fn().mockResolvedValue(makePdfPage()),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    };
     vi.mocked(pdfjsLib.getDocument).mockReturnValue({
       promise: Promise.resolve(doc),
     } as any);

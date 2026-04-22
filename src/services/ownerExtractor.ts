@@ -14,8 +14,7 @@ interface PdfTextItem {
 
 function isPdfTextItem(item: unknown): item is PdfTextItem {
   return (
-    typeof (item as PdfTextItem).str === "string" &&
-    Array.isArray((item as PdfTextItem).transform)
+    typeof (item as PdfTextItem).str === "string" && Array.isArray((item as PdfTextItem).transform)
   );
 }
 

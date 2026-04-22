@@ -10,9 +10,7 @@ vi.mock("../../services/bridge", () => ({
   Bridge: { openFile: vi.fn(), getGoogleDrivePath: vi.fn() },
 }));
 
-function renderRow(
-  overrides: Partial<Parameters<typeof PdfItemRow>[0]> = {}
-) {
+function renderRow(overrides: Partial<Parameters<typeof PdfItemRow>[0]> = {}) {
   const item = makePdf("x", "/docs/rapport.pdf");
   return render(
     <DndWrapper ids={["x"]}>
@@ -71,12 +69,7 @@ describe("PdfItemRow — interactions", () => {
     useMergeStore.setState({ items, selectedIds: new Set(["x", "y"]) });
     render(
       <DndWrapper ids={["x", "y"]}>
-        <PdfItemRow
-          item={items[0]}
-          selected={true}
-          onSelect={() => {}}
-          isGroupFollower={false}
-        />
+        <PdfItemRow item={items[0]} selected={true} onSelect={() => {}} isGroupFollower={false} />
       </DndWrapper>
     );
     await userEvent.click(screen.getByText("↻"));

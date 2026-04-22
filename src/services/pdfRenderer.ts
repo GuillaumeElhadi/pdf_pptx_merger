@@ -32,10 +32,7 @@ export async function renderPage(
     const scale = width / viewport.width;
     const scaled = page.getViewport({ scale });
 
-    const canvas = new OffscreenCanvas(
-      Math.floor(scaled.width),
-      Math.floor(scaled.height)
-    );
+    const canvas = new OffscreenCanvas(Math.floor(scaled.width), Math.floor(scaled.height));
     const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
 
     await page.render({

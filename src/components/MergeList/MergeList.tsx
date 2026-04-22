@@ -12,18 +12,14 @@ import {
   DragEndEvent,
   DragStartEvent,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMergeStore } from "../../store/useMergeStore";
 import { strings } from "../../strings";
 import { PdfItemRow } from "./PdfItemRow";
 import { SlideItemRow } from "./SlideItemRow";
 
 export function MergeList() {
-  const { items, selectedIds, setSelectedIds, clearSelection, reorderItems } =
-    useMergeStore();
+  const { items, selectedIds, setSelectedIds, clearSelection, reorderItems } = useMergeStore();
   // Tracks the last individually-clicked item, used as the anchor for shift+click range selection
   const lastSelectedIdForRangeRef = useRef<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -73,64 +69,55 @@ export function MergeList() {
   };
 
   if (items.length === 0) {
-    return (
-      <div style={styles.empty}>
-        {strings.mergeList.empty}
-      </div>
-    );
+    return <div style={styles.empty}>{strings.mergeList.empty}</div>;
   }
 
   // True when a drag is in progress and the dragged item belongs to a multi-item selection.
   // Used to render follower styling on the other selected items.
   const isMultiSelectDragInProgress =
-    activeDragId !== null &&
-    selectedIds.has(activeDragId) &&
-    selectedIds.size > 1;
+    activeDragId !== null && selectedIds.has(activeDragId) && selectedIds.size > 1;
 
   return (
     <DragActiveContext.Provider value={activeDragId !== null}>
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <SortableContext
-        items={items.map((i) => i.id)}
-        strategy={verticalListSortingStrategy}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
-        <div style={styles.list}>
-          {items.map((item) =>
-            item.type === "pdf" ? (
-              <PdfItemRow
-                key={item.id}
-                item={item}
-                selected={selectedIds.has(item.id)}
-                onSelect={(e) => handleItemSelect(item.id, e)}
-                isGroupFollower={
-                  isMultiSelectDragInProgress &&
-                  item.id !== activeDragId &&
-                  selectedIds.has(item.id)
-                }
-              />
-            ) : (
-              <SlideItemRow
-                key={item.id}
-                item={item}
-                selected={selectedIds.has(item.id)}
-                onSelect={(e) => handleItemSelect(item.id, e)}
-                isGroupFollower={
-                  isMultiSelectDragInProgress &&
-                  item.id !== activeDragId &&
-                  selectedIds.has(item.id)
-                }
-              />
-            )
-          )}
-        </div>
-      </SortableContext>
-    </DndContext>
+        <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+          <div style={styles.list}>
+            {items.map((item) =>
+              item.type === "pdf" ? (
+                <PdfItemRow
+                  key={item.id}
+                  item={item}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={(e) => handleItemSelect(item.id, e)}
+                  isGroupFollower={
+                    isMultiSelectDragInProgress &&
+                    item.id !== activeDragId &&
+                    selectedIds.has(item.id)
+                  }
+                />
+              ) : (
+                <SlideItemRow
+                  key={item.id}
+                  item={item}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={(e) => handleItemSelect(item.id, e)}
+                  isGroupFollower={
+                    isMultiSelectDragInProgress &&
+                    item.id !== activeDragId &&
+                    selectedIds.has(item.id)
+                  }
+                />
+              )
+            )}
+          </div>
+        </SortableContext>
+      </DndContext>
     </DragActiveContext.Provider>
   );
 }

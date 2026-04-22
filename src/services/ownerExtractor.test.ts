@@ -21,7 +21,9 @@ function textItem(str: string, y: number) {
 }
 
 /** Creates a mock pdfjs document where each element in `pages` describes one page. */
-function mockDocument(pages: { width: number; height: number; items: ReturnType<typeof textItem>[] }[]) {
+function mockDocument(
+  pages: { width: number; height: number; items: ReturnType<typeof textItem>[] }[]
+) {
   const mockPages = pages.map((p) => ({
     getViewport: vi.fn(() => ({ width: p.width, height: p.height })),
     getTextContent: vi.fn(() => Promise.resolve({ items: p.items })),
@@ -60,11 +62,9 @@ describe("extractOwners — propriétaire unique", () => {
   it("détecte le code et le nom sur les lignes suivantes", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Copropriétaire 0000001", 500),
-          textItem("S.A.S. IMMO. CARREFOUR", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("S.A.S. IMMO. CARREFOUR", 480)],
       },
     ]);
     const result = await extractOwners("/doc.pdf");
@@ -74,7 +74,8 @@ describe("extractOwners — propriétaire unique", () => {
   it("code et label séparés en deux items sur la même ligne (même y)", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
+        width: 842,
+        height: 595,
         items: [
           textItem("Copropriétaire ", 500),
           textItem("0000042", 500), // même y = même ligne
@@ -89,10 +90,11 @@ describe("extractOwners — propriétaire unique", () => {
   it("code seul sur la ligne suivante (entre label et nom)", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
+        width: 842,
+        height: 595,
         items: [
           textItem("Copropriétaire", 500),
-          textItem("0000099", 480),          // ligne intermédiaire avec seulement le code
+          textItem("0000099", 480), // ligne intermédiaire avec seulement le code
           textItem("FONCIÈRE ATLANTIQUE", 460),
         ],
       },
@@ -106,9 +108,13 @@ describe("extractOwners — faux positifs comptables", () => {
   it("ignore une ligne de compte '450000 COPROPRIETAIRE ...' (code avant le mot-clé)", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
+        width: 842,
+        height: 595,
         items: [
-          textItem("450000 COPROPRIETAIRE 0.00 40 006.54 450000 COPROPRIETAIRE 143 823.68 4 545.46", 352),
+          textItem(
+            "450000 COPROPRIETAIRE 0.00 40 006.54 450000 COPROPRIETAIRE 143 823.68 4 545.46",
+            352
+          ),
           textItem("40 Fournisseurs 723.60 8.04", 336),
           textItem("Total II 723.61 40 338.58", 264),
         ],
@@ -123,11 +129,9 @@ describe("extractOwners — label présent mais incomplet", () => {
   it("retourne [] si le code est absent", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Copropriétaire", 500),
-          textItem("Nom sans code", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire", 500), textItem("Nom sans code", 480)],
       },
     ]);
     const result = await extractOwners("/doc.pdf");
@@ -137,7 +141,8 @@ describe("extractOwners — label présent mais incomplet", () => {
   it("retourne [] si le nom est absent après le code", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
+        width: 842,
+        height: 595,
         items: [
           textItem("Copropriétaire 0000001", 500),
           // rien en dessous
@@ -153,11 +158,12 @@ describe("extractOwners — structure réelle avec adresse postale", () => {
   it("saute les lignes d'adresse (chiffre) entre le label et le nom", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
+        width: 842,
+        height: 595,
         items: [
           textItem("Copropriétaire 0000001", 516),
-          textItem("93 Avenue de Paris", 512),   // adresse → ignorée
-          textItem("91 3 00 MASSY", 504),         // code postal → ignoré
+          textItem("93 Avenue de Paris", 512), // adresse → ignorée
+          textItem("91 3 00 MASSY", 504), // code postal → ignoré
           textItem("S.A.S. IMMO. CARREFOUR", 496),
         ],
       },
@@ -169,7 +175,8 @@ describe("extractOwners — structure réelle avec adresse postale", () => {
   it("supprime le suffixe 'Exercice du ...' fusionné par pdf.js sur la ligne du nom", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
+        width: 842,
+        height: 595,
         items: [
           textItem("Copropriétaire 0000001", 516),
           textItem("93 Avenue de Paris", 512),
@@ -188,11 +195,9 @@ describe("extractOwners — variantes d'accentuation", () => {
   it("accepte 'Coproprietaire' sans accent sur le 'é'", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Coproprietaire 0000007", 500),
-          textItem("SCI LUMIERE", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Coproprietaire 0000007", 500), textItem("SCI LUMIERE", 480)],
       },
     ]);
     const result = await extractOwners("/doc.pdf");
@@ -204,18 +209,14 @@ describe("extractOwners — plusieurs pages", () => {
   it("collecte les propriétaires distincts sur différentes pages", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Copropriétaire 0000001", 500),
-          textItem("S.A.S. IMMO. CARREFOUR", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("S.A.S. IMMO. CARREFOUR", 480)],
       },
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Copropriétaire 0000002", 500),
-          textItem("SARL DUPONT", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000002", 500), textItem("SARL DUPONT", 480)],
       },
     ]);
     const result = await extractOwners("/doc.pdf");
@@ -227,18 +228,14 @@ describe("extractOwners — plusieurs pages", () => {
   it("déduplique un propriétaire présent sur plusieurs pages", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Copropriétaire 0000001", 500),
-          textItem("S.A.S. IMMO. CARREFOUR", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("S.A.S. IMMO. CARREFOUR", 480)],
       },
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Copropriétaire 0000001", 500),
-          textItem("S.A.S. IMMO. CARREFOUR", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("S.A.S. IMMO. CARREFOUR", 480)],
       },
     ]);
     const result = await extractOwners("/doc.pdf");
@@ -248,17 +245,14 @@ describe("extractOwners — plusieurs pages", () => {
   it("ignore les pages communes (sans label Copropriétaire)", async () => {
     mockDocument([
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Page commune — relevé général", 500),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Page commune — relevé général", 500)],
       },
       {
-        width: 842, height: 595,
-        items: [
-          textItem("Copropriétaire 0000003", 500),
-          textItem("GIE CENTRES COMMERCIAUX", 480),
-        ],
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000003", 500), textItem("GIE CENTRES COMMERCIAUX", 480)],
       },
     ]);
     const result = await extractOwners("/doc.pdf");

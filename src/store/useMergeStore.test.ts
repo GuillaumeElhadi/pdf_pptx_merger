@@ -233,7 +233,11 @@ describe("useMergeStore — addPdfs", () => {
   it("les items apparaissent immédiatement (owners undefined avant extraction)", async () => {
     // extractOwners ne se résout pas immédiatement — on vérifie l'état synchrone
     let resolveExtraction!: (v: never[]) => void;
-    vi.mocked(extractOwners).mockReturnValue(new Promise((r) => { resolveExtraction = r; }));
+    vi.mocked(extractOwners).mockReturnValue(
+      new Promise((r) => {
+        resolveExtraction = r;
+      })
+    );
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
     await useMergeStore.getState().addPdfs();

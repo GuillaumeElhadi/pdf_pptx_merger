@@ -156,8 +156,6 @@ describe("App — S : layout", () => {
   it("le texte de la bannière inclut le hint de déplacement groupé", () => {
     useMergeStore.setState({ selectedIds: new Set(["a", "b"]) });
     render(<App />);
-    expect(
-      screen.getByText(/déplacez l'un pour les déplacer tous/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/déplacez l'un pour les déplacer tous/)).toBeInTheDocument();
   });
 });

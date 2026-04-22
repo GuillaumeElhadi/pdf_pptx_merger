@@ -77,9 +77,7 @@ describe("basename — I : contrat", () => {
   });
 
   it("n'altère pas le nom de fichier (casse, caractères spéciaux)", () => {
-    expect(basename("/path/Rapport Annuel (2024).pdf")).toBe(
-      "Rapport Annuel (2024).pdf"
-    );
+    expect(basename("/path/Rapport Annuel (2024).pdf")).toBe("Rapport Annuel (2024).pdf");
   });
 
   it("préserve les extensions multiples", () => {

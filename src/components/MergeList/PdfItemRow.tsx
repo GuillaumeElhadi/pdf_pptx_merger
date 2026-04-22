@@ -18,8 +18,9 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
   const removeItem = useMergeStore((s) => s.removeItem);
   const rotateItems = useMergeStore((s) => s.rotateItems);
   const selectedIds = useMergeStore((s) => s.selectedIds);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: item.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
 
   const rowStyle: React.CSSProperties = {
     ...styles.row,
@@ -44,27 +45,26 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
       <span style={styles.handle}>⠿</span>
       <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ transform: `rotate(${item.rotation}deg)`, transition: "transform 0.2s" }}>
-          <ZoomThumb pdfPath={item.pdfPath} pageIndex={0} alt={basename(item.pdfPath)} rotation={item.rotation} />
+          <ZoomThumb
+            pdfPath={item.pdfPath}
+            pageIndex={0}
+            alt={basename(item.pdfPath)}
+            rotation={item.rotation}
+          />
         </div>
-        {item.rotation !== 0 && (
-          <span style={styles.rotationBadge}>{item.rotation}°</span>
-        )}
+        {item.rotation !== 0 && <span style={styles.rotationBadge}>{item.rotation}°</span>}
       </div>
       <span style={styles.nameBlock}>
         <span style={styles.name}>{basename(item.pdfPath)}</span>
         {item.owners && item.owners.length > 0 && (
-          <span style={styles.ownerChip}>
-            {item.owners.map((o) => o.name).join(" · ")}
-          </span>
+          <span style={styles.ownerChip}>{item.owners.map((o) => o.name).join(" · ")}</span>
         )}
       </span>
       <button
         style={styles.rotate}
         onClick={(e) => {
           e.stopPropagation();
-          const ids = selected && selectedIds.size > 1
-            ? [...selectedIds]
-            : [item.id];
+          const ids = selected && selectedIds.size > 1 ? [...selectedIds] : [item.id];
           rotateItems(ids);
         }}
         onDoubleClick={(e) => e.stopPropagation()}
@@ -78,7 +78,10 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
       </button>
       <button
         style={styles.remove}
-        onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          removeItem(item.id);
+        }}
         onDoubleClick={(e) => e.stopPropagation()}
       >
         ✕

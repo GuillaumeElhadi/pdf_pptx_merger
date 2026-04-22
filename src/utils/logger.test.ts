@@ -57,9 +57,7 @@ describe("logger — O : méthodes de base", () => {
 
   it("logger.error(context, Error) extrait le .message", () => {
     logger.error("loadPptx", new Error("PowerPoint introuvable"));
-    expect(vi.mocked(logError)).toHaveBeenCalledWith(
-      "[loadPptx] PowerPoint introuvable"
-    );
+    expect(vi.mocked(logError)).toHaveBeenCalledWith("[loadPptx] PowerPoint introuvable");
   });
 });
 
@@ -145,8 +143,6 @@ describe("logger — E : fallback console quand Tauri rejette", () => {
     vi.mocked(info).mockRejectedValueOnce(new Error("Tauri non disponible"));
     logger.action("loadPptx", { path: "/deck.pptx" });
     await Promise.resolve();
-    expect(console.info).toHaveBeenCalledWith(
-      '[ACTION] loadPptx — {"path":"/deck.pptx"}'
-    );
+    expect(console.info).toHaveBeenCalledWith('[ACTION] loadPptx — {"path":"/deck.pptx"}');
   });
 });

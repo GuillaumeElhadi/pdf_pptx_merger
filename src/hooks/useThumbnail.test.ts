@@ -88,9 +88,7 @@ describe("useThumbnail — B : limites", () => {
   });
 
   it("changement de pdfPath déclenche un nouveau rendu avec le nouveau chemin", async () => {
-    vi.mocked(renderPage)
-      .mockResolvedValueOnce("blob:url-a")
-      .mockResolvedValueOnce("blob:url-b");
+    vi.mocked(renderPage).mockResolvedValueOnce("blob:url-a").mockResolvedValueOnce("blob:url-b");
 
     const { result, rerender } = renderHook(
       ({ path }: { path: string }) => useThumbnail(path, 0, 160),
@@ -107,9 +105,7 @@ describe("useThumbnail — B : limites", () => {
   });
 
   it("changement de pageIndex déclenche un nouveau rendu", async () => {
-    vi.mocked(renderPage)
-      .mockResolvedValueOnce("blob:page-0")
-      .mockResolvedValueOnce("blob:page-2");
+    vi.mocked(renderPage).mockResolvedValueOnce("blob:page-0").mockResolvedValueOnce("blob:page-2");
 
     const { result, rerender } = renderHook(
       ({ idx }: { idx: number }) => useThumbnail("/a.pdf", idx, 160),

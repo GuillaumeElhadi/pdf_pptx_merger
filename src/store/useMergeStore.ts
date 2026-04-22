@@ -122,7 +122,10 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       return;
     }
 
-    logger.action("addPdfs", { count: paths.length, files: paths.map((p) => p.split(/[\\/]/).pop()) });
+    logger.action("addPdfs", {
+      count: paths.length,
+      files: paths.map((p) => p.split(/[\\/]/).pop()),
+    });
 
     const newItems: PdfItem[] = paths.map((p) => ({
       id: uuid(),
@@ -146,9 +149,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       } catch (e) {
         logger.warn("addPdfs:extractOwners", `id=${item.id} — ${String(e)}`);
         set((s) => ({
-          items: s.items.map((i) =>
-            i.id === item.id ? { ...i, ownersError: String(e) } : i
-          ),
+          items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
         }));
       }
     });
