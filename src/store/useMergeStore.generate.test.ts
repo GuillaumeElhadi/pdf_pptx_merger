@@ -550,13 +550,13 @@ describe("generate — multi-owner : split par propriétaire", () => {
   });
 
   it("PDF sans owner → toutes ses pages incluses dans les deux outputs", async () => {
-    // pdfNoOwner a 1 page et pas d'owners → inclus dans tous les outputs
+    // pdfNoOwner a 1 page et owners: [] (aucun owner détecté) → inclus dans tous les outputs
     // pdfWithOwners a 2 pages (page1=X, page2=Y)
     const pageOwnersMap = new Map([
       [1, ownerX],
       [2, ownerY],
     ]);
-    const pdfNoOwner: PdfItem = makePdf("no", "/no.pdf"); // owners undefined
+    const pdfNoOwner: PdfItem = makePdf("no", "/no.pdf");
     const pdfWithOwners: PdfItem = {
       ...makePdf("ab", "/ab.pdf"),
       owners: [ownerX, ownerY],

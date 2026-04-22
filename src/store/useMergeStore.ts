@@ -308,8 +308,12 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         await loadOrCacheDoc(slidePdf);
       }
 
-      // Normalize trailing separator — works on both Windows (\) and POSIX (/)
-      const dir = basePath.replace(/[/\\]$/, "");
+      // Normalize to forward slashes, then strip trailing slash except on filesystem roots (/ or C:/)
+      const normalizedBase = basePath.replace(/\\/g, "/");
+      const dir =
+        normalizedBase === "/" || /^[A-Za-z]:\/$/.test(normalizedBase)
+          ? normalizedBase
+          : normalizedBase.replace(/\/$/, "");
 
       if (isMultiOwner) {
         const ownersList = Array.from(allOwners.values());

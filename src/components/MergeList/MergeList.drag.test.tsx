@@ -11,7 +11,7 @@
  *   - La précision des coordonnées dans un scroll container — idem
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, act } from "@testing-library/react";
 import { MergeList } from "./MergeList";
 import { useMergeStore } from "../../store/useMergeStore";
