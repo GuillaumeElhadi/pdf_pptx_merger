@@ -38,6 +38,7 @@ interface MergeStore {
   statusMessage: string;
   progress: number | null;
   lastOutputPath: string | null;
+  lastOutputDir: string | null;
 
   // ── Actions ───────────────────────────────────────────────────────────────
   loadPptx: (defaultPath?: string) => Promise<void>;
@@ -59,6 +60,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   statusMessage: strings.status.ready,
   progress: null,
   lastOutputPath: null,
+  lastOutputDir: null,
 
   setSelectedIds: (ids) => set({ selectedIds: ids }),
   clearSelection: () => set({ selectedIds: new Set() }),
@@ -235,9 +237,18 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
   // ── generate ─────────────────────────────────────────────────────────────
   generate: async () => {
-    const { items, slidePdf, lastOutputPath } = get();
+    const { items, slidePdf, lastOutputPath, lastOutputDir } = get();
     const hasPdf = items.some((i) => i.type === "pdf");
     if (!hasPdf) return;
+
+    // Guard: if any PDF still has owners === undefined (and no error), extraction is in progress
+    const hasPendingExtraction = items.some(
+      (i) => i.type === "pdf" && i.owners === undefined && !i.ownersError
+    );
+    if (hasPendingExtraction) {
+      set({ statusMessage: strings.status.ownersNotReady });
+      return;
+    }
 
     // Collect all distinct owners across all PdfItems
     const allOwners = new Map<string, OwnerInfo>();
@@ -250,17 +261,20 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     }
     const isMultiOwner = allOwners.size > 1;
 
+    // Use separate last-path memory for file vs directory modes
+    const previousPath = isMultiOwner ? lastOutputDir : lastOutputPath;
+
     let basePath = isMultiOwner
       ? await Bridge.pickSaveDirectory()
       : await Bridge.pickSaveLocation();
     if (!basePath) {
-      if (lastOutputPath) {
+      if (previousPath) {
         const msg = isMultiOwner
-          ? strings.confirm.reuseOutputSplit(lastOutputPath)
-          : strings.confirm.reuseOutput(lastOutputPath);
+          ? strings.confirm.reuseOutputSplit(previousPath)
+          : strings.confirm.reuseOutput(previousPath);
         const reuse = confirm(msg);
         if (!reuse) return;
-        basePath = lastOutputPath;
+        basePath = previousPath;
       } else {
         return;
       }
@@ -293,6 +307,9 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       if (slidePdf && items.some((i) => i.type === "slide")) {
         await loadOrCacheDoc(slidePdf);
       }
+
+      // Normalize trailing separator — works on both Windows (\) and POSIX (/)
+      const dir = basePath.replace(/[/\\]$/, "");
 
       if (isMultiOwner) {
         const ownersList = Array.from(allOwners.values());
@@ -333,25 +350,32 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
                   merged.addPage(p);
                 });
               } else if (item.owners.some((o) => o.code === owner.code)) {
-                // PDF contains this owner — include pages attributed to this owner + orphans
+                // PDF contains this owner — batch-collect indices first, then copyPages once
                 const pageOwners = item.pageOwners ?? new Map();
+                const includedIndices: number[] = [];
                 for (let pageIdx = 0; pageIdx < pageCount; pageIdx++) {
-                  const pageNum = pageIdx + 1;
-                  const pageOwner = pageOwners.get(pageNum);
+                  const pageOwner = pageOwners.get(pageIdx + 1);
                   if (!pageOwner || pageOwner.code === owner.code) {
-                    const [page] = await merged.copyPages(doc, [pageIdx]);
-                    if (item.rotation !== 0) {
-                      page.setRotation(degrees((page.getRotation().angle + item.rotation) % 360));
-                    }
-                    merged.addPage(page);
+                    includedIndices.push(pageIdx);
                   }
+                }
+                if (includedIndices.length > 0) {
+                  const pages = await merged.copyPages(doc, includedIndices);
+                  pages.forEach((p: PDFPage) => {
+                    if (item.rotation !== 0) {
+                      p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+                    }
+                    merged.addPage(p);
+                  });
                 }
               }
               // else: PDF belongs exclusively to other owners → skip
             }
           }
 
-          const outputPath = `${basePath}/${ownerToSnakeCase(owner.name)}.pdf`;
+          // Fallback to owner.code if snake_case produces an empty string
+          const filename = ownerToSnakeCase(owner.name) || owner.code;
+          const outputPath = `${dir}/${filename}.pdf`;
           const bytes = await merged.save();
           await writeFile(outputPath, bytes);
           logger.info("generate", `split PDF saved → ${outputPath}`);
@@ -360,9 +384,9 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         logger.info("generate", `split complete — ${ownersList.length} PDFs`);
         set({
           status: "idle",
-          statusMessage: strings.status.splitSaved(ownersList.length, basePath),
+          statusMessage: strings.status.splitSaved(ownersList.length, dir),
           progress: null,
-          lastOutputPath: basePath,
+          lastOutputDir: dir,
         });
       } else {
         // Single-owner or no owner: produce one merged PDF (original behavior)

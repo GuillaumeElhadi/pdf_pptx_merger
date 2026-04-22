@@ -53,6 +53,7 @@ export const strings = {
     mergingOwner: (index: number, total: number, name: string) =>
       `Fusion ${index}/${total} — ${name}…`,
     splitSaved: (count: number, dir: string) => `✓ ${count} PDFs enregistrés dans : ${dir}`,
+    ownersNotReady: "Analyse des propriétaires en cours, veuillez réessayer dans un instant.",
   },
 
   // Store — confirm dialogs

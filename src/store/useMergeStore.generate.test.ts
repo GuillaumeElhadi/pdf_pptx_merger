@@ -49,8 +49,9 @@ vi.mock("pdf-lib", () => ({
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 
+// owners: [] simulates extraction completed with no owners found (the normal case for a plain PDF)
 function makePdf(id: string, path = `/files/${id}.pdf`): PdfItem {
-  return { id, type: "pdf", pdfPath: path, rotation: 0 };
+  return { id, type: "pdf", pdfPath: path, rotation: 0, owners: [] };
 }
 
 function makeSlide(id: string, slideIndex = 0): SlideItem {
@@ -79,7 +80,12 @@ function makeSourceDoc(pageCount: number) {
 /** Document de fusion simulé (PDFDocument.create). */
 function makeMergedDoc() {
   return {
-    copyPages: vi.fn().mockResolvedValue([makePage()]),
+    // Default: returns one makePage() per requested index (mirrors the real api)
+    copyPages: vi
+      .fn()
+      .mockImplementation((_doc: unknown, indices: number[]) =>
+        Promise.resolve(indices.map(() => makePage()))
+      ),
     addPage: vi.fn(),
     save: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
   };
@@ -98,6 +104,7 @@ function resetStore() {
     statusMessage: strings.status.ready,
     progress: null,
     lastOutputPath: null,
+    lastOutputDir: null,
   });
 }
 
@@ -135,6 +142,39 @@ describe("generate — Z : aucun déclencheur", () => {
     await useMergeStore.getState().generate();
 
     expect(writeFile).not.toHaveBeenCalled();
+    expect(useMergeStore.getState().status).toBe("idle");
+  });
+
+  it("ne génère pas si l'extraction des propriétaires est en cours (owners === undefined)", async () => {
+    // Item sans owners ni ownersError = extraction toujours en cours
+    const pendingItem: PdfItem = { id: "p", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [pendingItem] });
+
+    await useMergeStore.getState().generate();
+
+    expect(Bridge.pickSaveLocation).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(useMergeStore.getState().statusMessage).toBe(strings.status.ownersNotReady);
+  });
+
+  it("génère normalement si l'extraction a échoué (ownersError défini, owners undefined)", async () => {
+    const mergedDoc = makeMergedDoc();
+    vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1) as any);
+    vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
+    // ownersError set → extraction failed → treated as no-owner, generate continues
+    const failedItem: PdfItem = {
+      id: "f",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      ownersError: "timeout",
+    };
+    useMergeStore.setState({ items: [failedItem] });
+
+    await useMergeStore.getState().generate();
+
+    expect(writeFile).toHaveBeenCalledWith("/out/result.pdf", expect.any(Uint8Array));
     expect(useMergeStore.getState().status).toBe("idle");
   });
 });
@@ -506,7 +546,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
     await useMergeStore.getState().generate();
 
     expect(useMergeStore.getState().statusMessage).toBe(strings.status.splitSaved(2, "/out"));
-    expect(useMergeStore.getState().lastOutputPath).toBe("/out");
+    expect(useMergeStore.getState().lastOutputDir).toBe("/out");
   });
 
   it("PDF sans owner → toutes ses pages incluses dans les deux outputs", async () => {
@@ -791,5 +831,45 @@ describe("generate — S : scénarios", () => {
     expect(slidePage.setRotation).not.toHaveBeenCalled();
     expect(p3.setRotation).not.toHaveBeenCalled();
     expect(useMergeStore.getState().status).toBe("idle");
+  });
+
+  it("S4 — lastOutputDir et lastOutputPath sont isolés : reuse multi n'utilise pas lastOutputPath", async () => {
+    const ownerX = { code: "0000001", name: "OWNER X" };
+    const ownerY = { code: "0000002", name: "OWNER Y" };
+    const pdfItem: PdfItem = {
+      ...makePdf("a", "/a.pdf"),
+      owners: [ownerX, ownerY],
+      pageOwners: new Map([
+        [1, ownerX],
+        [2, ownerY],
+      ]),
+    };
+
+    vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue(null);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const mergedDocX = makeMergedDoc();
+    const mergedDocY = makeMergedDoc();
+    vi.mocked(PDFDocument.create)
+      .mockResolvedValueOnce(mergedDocX as any)
+      .mockResolvedValueOnce(mergedDocY as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(2) as any);
+
+    // lastOutputPath contient un chemin de fichier (run single précédent)
+    // lastOutputDir contient le dossier attendu (run multi précédent)
+    useMergeStore.setState({
+      items: [pdfItem],
+      lastOutputPath: "/prev/single.pdf",
+      lastOutputDir: "/prev/dir",
+    });
+    await useMergeStore.getState().generate();
+
+    // Le confirm de reuse doit avoir été proposé avec le chemin dossier, pas le chemin fichier
+    expect(writeFile).toHaveBeenCalledWith("/prev/dir/owner_x.pdf", expect.any(Uint8Array));
+    expect(writeFile).toHaveBeenCalledWith("/prev/dir/owner_y.pdf", expect.any(Uint8Array));
+    // Le chemin fichier du mode single ne doit pas avoir été utilisé
+    expect(writeFile).not.toHaveBeenCalledWith(
+      expect.stringContaining("single.pdf"),
+      expect.anything()
+    );
   });
 });
