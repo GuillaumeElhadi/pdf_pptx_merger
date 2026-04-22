@@ -6,6 +6,13 @@ export interface OwnerInfo {
   name: string; // e.g. "S.A.S. IMMO. CARREFOUR"
 }
 
+export interface ExtractionResult {
+  /** Distinct owners found across all pages. */
+  owners: OwnerInfo[];
+  /** 1-based page number → owner. Pages absent from the map are orphans (included in all outputs). */
+  pageOwners: Map<number, OwnerInfo>;
+}
+
 // Minimal shape we use from pdfjs TextItem
 interface PdfTextItem {
   str: string;
@@ -79,10 +86,10 @@ function parseOwner(lines: Line[]): OwnerInfo | null {
 }
 
 /**
- * Returns the unique owners found across all pages of a landscape PDF.
- * Returns an empty array for portrait PDFs or when no owner pattern is detected.
+ * Returns owners found across all pages of a landscape PDF, with per-page attribution.
+ * Returns empty owners/pageOwners for portrait PDFs or when no owner pattern is detected.
  */
-export async function extractOwners(pdfPath: string): Promise<OwnerInfo[]> {
+export async function extractOwners(pdfPath: string): Promise<ExtractionResult> {
   const url = convertFileSrc(pdfPath);
   const pdf = await pdfjsLib.getDocument(url).promise;
 
@@ -90,21 +97,23 @@ export async function extractOwners(pdfPath: string): Promise<OwnerInfo[]> {
     // Only landscape PDFs contain per-owner pages
     const firstPage = await pdf.getPage(1);
     const viewport = firstPage.getViewport({ scale: 1 });
-    if (viewport.width <= viewport.height) return [];
+    if (viewport.width <= viewport.height) return { owners: [], pageOwners: new Map() };
 
     const found = new Map<string, OwnerInfo>();
+    const pageOwners = new Map<number, OwnerInfo>();
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = pageNum === 1 ? firstPage : await pdf.getPage(pageNum);
       const content = await page.getTextContent();
       const lines = buildLines(content.items);
       const owner = parseOwner(lines);
-      if (owner && !found.has(owner.code)) {
-        found.set(owner.code, owner);
+      if (owner) {
+        if (!found.has(owner.code)) found.set(owner.code, owner);
+        pageOwners.set(pageNum, found.get(owner.code)!);
       }
     }
 
-    return Array.from(found.values());
+    return { owners: Array.from(found.values()), pageOwners };
   } finally {
     await pdf.destroy();
   }

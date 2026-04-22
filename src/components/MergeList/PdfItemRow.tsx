@@ -67,6 +67,7 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
           const ids = selected && selectedIds.size > 1 ? [...selectedIds] : [item.id];
           rotateItems(ids);
         }}
+        onPointerDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         title={
           selected && selectedIds.size > 1
@@ -82,6 +83,7 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
           e.stopPropagation();
           removeItem(item.id);
         }}
+        onPointerDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
         ✕

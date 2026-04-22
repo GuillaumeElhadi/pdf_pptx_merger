@@ -18,6 +18,8 @@ export interface PdfItem {
   owners?: OwnerInfo[];
   /** Set when owner extraction was attempted but threw — undefined otherwise. */
   ownersError?: string;
+  /** 1-based page → owner. Pages absent from the map are orphans included in all split outputs. */
+  pageOwners?: Map<number, OwnerInfo>;
 }
 
 export interface SlideItem {

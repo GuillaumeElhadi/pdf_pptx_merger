@@ -72,6 +72,7 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
           const ids = selected && selectedIds.size > 1 ? [...selectedIds] : [item.id];
           rotateItems(ids);
         }}
+        onPointerDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         title={
           selected && selectedIds.size > 1
@@ -88,6 +89,7 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
           e.stopPropagation();
           removeItem(item.id);
         }}
+        onPointerDown={(e) => e.stopPropagation()}
         title={strings.slideItem.removeTooltip}
       >
         ✕

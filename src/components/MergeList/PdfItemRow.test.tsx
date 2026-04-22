@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PdfItemRow } from "./PdfItemRow";
 import { useMergeStore } from "../../store/useMergeStore";
@@ -62,6 +62,34 @@ describe("PdfItemRow — interactions", () => {
     renderRow();
     await userEvent.click(screen.getByText("↻"));
     expect(useMergeStore.getState().items[0].rotation).toBe(90);
+  });
+
+  it("pointerdown sur ✕ ne remonte pas au parent React (empêche le déclenchement du drag)", () => {
+    const parentSpy = vi.fn();
+    const item = makePdf("x", "/docs/rapport.pdf");
+    const { getByText } = render(
+      <DndWrapper ids={["x"]}>
+        <div onPointerDown={parentSpy}>
+          <PdfItemRow item={item} selected={false} onSelect={() => {}} isGroupFollower={false} />
+        </div>
+      </DndWrapper>
+    );
+    fireEvent.pointerDown(getByText("✕"));
+    expect(parentSpy).not.toHaveBeenCalled();
+  });
+
+  it("pointerdown sur ↻ ne remonte pas au parent React (empêche le déclenchement du drag)", () => {
+    const parentSpy = vi.fn();
+    const item = makePdf("x", "/docs/rapport.pdf");
+    const { getByText } = render(
+      <DndWrapper ids={["x"]}>
+        <div onPointerDown={parentSpy}>
+          <PdfItemRow item={item} selected={false} onSelect={() => {}} isGroupFollower={false} />
+        </div>
+      </DndWrapper>
+    );
+    fireEvent.pointerDown(getByText("↻"));
+    expect(parentSpy).not.toHaveBeenCalled();
   });
 
   it("le bouton ↻ tourne tous les items sélectionnés", async () => {

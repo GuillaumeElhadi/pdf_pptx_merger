@@ -50,6 +50,10 @@ export const strings = {
     preparingMerge: "Préparation de la fusion…",
     merging: (done: number, total: number) => `Fusion… ${done}/${total} pages`,
     pdfSaved: (path: string) => `✓ PDF enregistré : ${path}`,
+    mergingOwner: (index: number, total: number, name: string) =>
+      `Fusion ${index}/${total} — ${name}…`,
+    splitSaved: (count: number, dir: string) => `✓ ${count} PDFs enregistrés dans : ${dir}`,
+    ownersNotReady: "Analyse des propriétaires en cours, veuillez réessayer dans un instant.",
   },
 
   // Store — confirm dialogs
@@ -57,5 +61,6 @@ export const strings = {
     replacePptx:
       "Charger un nouveau PowerPoint remplacera toutes les diapositives existantes. Continuer ?",
     reuseOutput: (path: string) => `Réutiliser le fichier de sortie précédent ?\n${path}`,
+    reuseOutputSplit: (path: string) => `Réutiliser le dossier de sortie précédent ?\n${path}`,
   },
 };
