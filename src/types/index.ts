@@ -1,3 +1,7 @@
+import type { OwnerInfo } from "../services/ownerExtractor";
+
+export type { OwnerInfo };
+
 export type Rotation = 0 | 90 | 180 | 270;
 
 export interface PdfItem {
@@ -5,6 +9,13 @@ export interface PdfItem {
   type: "pdf";
   pdfPath: string;
   rotation: Rotation;
+  /**
+   * Owners detected in this PDF's pages.
+   * undefined  = extraction not yet run
+   * []         = portrait PDF, or landscape with no Copropriétaire pattern found
+   * [...]      = one or more distinct owners detected
+   */
+  owners?: OwnerInfo[];
 }
 
 export interface SlideItem {

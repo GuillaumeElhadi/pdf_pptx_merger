@@ -50,7 +50,14 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
           <span style={styles.rotationBadge}>{item.rotation}°</span>
         )}
       </div>
-      <span style={styles.name}>{basename(item.pdfPath)}</span>
+      <span style={styles.nameBlock}>
+        <span style={styles.name}>{basename(item.pdfPath)}</span>
+        {item.owners && item.owners.length > 0 && (
+          <span style={styles.ownerChip}>
+            {item.owners.map((o) => o.name).join(" · ")}
+          </span>
+        )}
+      </span>
       <button
         style={styles.rotate}
         onClick={(e) => {
@@ -139,10 +146,23 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     pointerEvents: "none" as const,
   },
-  name: {
+  nameBlock: {
     flex: 1,
+    display: "flex",
+    flexDirection: "column" as const,
+    overflow: "hidden",
+    gap: 2,
+  },
+  name: {
     color: "var(--text-primary)",
     fontSize: 13,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  ownerChip: {
+    color: "var(--text-muted)",
+    fontSize: 11,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",

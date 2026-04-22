@@ -5,6 +5,7 @@ import { PDFDocument, PDFPage, degrees } from "pdf-lib";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Bridge } from "../services/bridge";
+import { extractOwners, type OwnerInfo } from "../services/ownerExtractor";
 import { strings } from "../strings";
 import { logger } from "../utils/logger";
 import type { AppStatus, MergeItem, PdfItem, Rotation, SlideItem } from "../types";
@@ -134,6 +135,14 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       items: [...s.items, ...newItems],
       statusMessage: strings.status.pdfsAdded(newItems.length),
     }));
+
+    // Enrich each new PDF with owner info in the background (non-blocking)
+    newItems.forEach(async (item) => {
+      const owners = await extractOwners(item.pdfPath).catch((): OwnerInfo[] => []);
+      set((s) => ({
+        items: s.items.map((i) => (i.id === item.id ? { ...i, owners } : i)),
+      }));
+    });
   },
 
   // ── removeItem ────────────────────────────────────────────────────────────

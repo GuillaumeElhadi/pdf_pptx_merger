@@ -4,7 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { ThemeContext } from "../hooks/useTheme";
 import { useMergeStore } from "../store/useMergeStore";
 import { strings } from "../strings";
-import type { PdfItem, SlideItem } from "../types";
+import type { OwnerInfo, PdfItem, SlideItem } from "../types";
 import type { Update } from "@tauri-apps/plugin-updater";
 
 // ── Store reset ───────────────────────────────────────────────────────────────
@@ -31,6 +31,10 @@ export function makePdf(id: string, path = `/files/${id}.pdf`): PdfItem {
 
 export function makeSlide(id: string, slideIndex = 0): SlideItem {
   return { id, type: "slide", slideIndex, rotation: 0 };
+}
+
+export function makeOwnerInfo(overrides?: Partial<OwnerInfo>): OwnerInfo {
+  return { code: "0000001", name: "S.A.S. IMMO. CARREFOUR", ...overrides };
 }
 
 // ── Wrappers ──────────────────────────────────────────────────────────────────
