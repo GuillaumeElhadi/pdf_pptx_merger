@@ -261,7 +261,7 @@ describe("useMergeStore — addPdfs", () => {
     expect((items[0] as PdfItem).owners).toEqual(detected);
   });
 
-  it("met owners à [] si extractOwners lève une erreur", async () => {
+  it("laisse owners undefined et peuple ownersError si extractOwners lève une erreur", async () => {
     vi.mocked(extractOwners).mockRejectedValue(new Error("échec extraction"));
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -269,8 +269,9 @@ describe("useMergeStore — addPdfs", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const { items } = useMergeStore.getState();
-    expect((items[0] as PdfItem).owners).toEqual([]);
+    const item = useMergeStore.getState().items[0] as PdfItem;
+    expect(item.owners).toBeUndefined();
+    expect(item.ownersError).toMatch(/échec extraction/);
   });
 });
 

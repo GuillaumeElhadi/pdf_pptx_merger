@@ -11,11 +11,13 @@ export interface PdfItem {
   rotation: Rotation;
   /**
    * Owners detected in this PDF's pages.
-   * undefined  = extraction not yet run
-   * []         = portrait PDF, or landscape with no Copropriétaire pattern found
-   * [...]      = one or more distinct owners detected
+   * undefined  = extraction not yet run (or extraction failed — see ownersError)
+   * []         = extraction succeeded: portrait PDF or no Copropriétaire pattern found
+   * [...]      = extraction succeeded: one or more distinct owners detected
    */
   owners?: OwnerInfo[];
+  /** Set when owner extraction was attempted but threw — undefined otherwise. */
+  ownersError?: string;
 }
 
 export interface SlideItem {

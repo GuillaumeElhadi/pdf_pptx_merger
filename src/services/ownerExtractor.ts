@@ -87,22 +87,26 @@ export async function extractOwners(pdfPath: string): Promise<OwnerInfo[]> {
   const url = convertFileSrc(pdfPath);
   const pdf = await pdfjsLib.getDocument(url).promise;
 
-  // Only landscape PDFs contain per-owner pages
-  const firstPage = await pdf.getPage(1);
-  const viewport = firstPage.getViewport({ scale: 1 });
-  if (viewport.width <= viewport.height) return [];
+  try {
+    // Only landscape PDFs contain per-owner pages
+    const firstPage = await pdf.getPage(1);
+    const viewport = firstPage.getViewport({ scale: 1 });
+    if (viewport.width <= viewport.height) return [];
 
-  const found = new Map<string, OwnerInfo>();
+    const found = new Map<string, OwnerInfo>();
 
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = pageNum === 1 ? firstPage : await pdf.getPage(pageNum);
-    const content = await page.getTextContent();
-    const lines = buildLines(content.items);
-    const owner = parseOwner(lines);
-    if (owner && !found.has(owner.code)) {
-      found.set(owner.code, owner);
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = pageNum === 1 ? firstPage : await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      const lines = buildLines(content.items);
+      const owner = parseOwner(lines);
+      if (owner && !found.has(owner.code)) {
+        found.set(owner.code, owner);
+      }
     }
-  }
 
-  return Array.from(found.values());
+    return Array.from(found.values());
+  } finally {
+    await pdf.destroy();
+  }
 }

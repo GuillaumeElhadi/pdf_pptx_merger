@@ -31,6 +31,7 @@ function mockDocument(pages: { width: number; height: number; items: ReturnType<
     promise: Promise.resolve({
       numPages: pages.length,
       getPage: vi.fn((n: number) => Promise.resolve(mockPages[n - 1])),
+      destroy: vi.fn().mockResolvedValue(undefined),
     }),
   } as unknown as ReturnType<typeof pdfjsLib.getDocument>);
 }

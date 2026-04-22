@@ -138,10 +138,19 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
     // Enrich each new PDF with owner info in the background (non-blocking)
     newItems.forEach(async (item) => {
-      const owners = await extractOwners(item.pdfPath).catch((): OwnerInfo[] => []);
-      set((s) => ({
-        items: s.items.map((i) => (i.id === item.id ? { ...i, owners } : i)),
-      }));
+      try {
+        const owners = await extractOwners(item.pdfPath);
+        set((s) => ({
+          items: s.items.map((i) => (i.id === item.id ? { ...i, owners } : i)),
+        }));
+      } catch (e) {
+        logger.warn("addPdfs:extractOwners", { id: item.id, error: e });
+        set((s) => ({
+          items: s.items.map((i) =>
+            i.id === item.id ? { ...i, ownersError: String(e) } : i
+          ),
+        }));
+      }
     });
   },
 

@@ -45,6 +45,7 @@ function setupPdfjs(page = makePdfPage()) {
   vi.mocked(pdfjsLib.getDocument).mockReturnValue({
     promise: Promise.resolve({
       getPage: vi.fn().mockResolvedValue(page),
+      destroy: vi.fn().mockResolvedValue(undefined),
     }),
   } as any);
   return page;
@@ -126,6 +127,7 @@ describe("renderPage — M : comportement du cache", () => {
       getPage: vi.fn()
         .mockResolvedValueOnce(page0)
         .mockResolvedValueOnce(page1),
+      destroy: vi.fn().mockResolvedValue(undefined),
     };
     vi.mocked(pdfjsLib.getDocument)
       .mockReturnValueOnce({ promise: Promise.resolve(doc) } as any)
@@ -143,7 +145,7 @@ describe("renderPage — M : comportement du cache", () => {
 
 describe("renderPage — B : limites", () => {
   it("pageIndex 0 → pdfjs.getPage appelé avec 1 (conversion 0-based → 1-based)", async () => {
-    const doc = { getPage: vi.fn().mockResolvedValue(makePdfPage()) };
+    const doc = { getPage: vi.fn().mockResolvedValue(makePdfPage()), destroy: vi.fn().mockResolvedValue(undefined) };
     vi.mocked(pdfjsLib.getDocument).mockReturnValue({
       promise: Promise.resolve(doc),
     } as any);
@@ -154,7 +156,7 @@ describe("renderPage — B : limites", () => {
   });
 
   it("pageIndex 4 → pdfjs.getPage appelé avec 5", async () => {
-    const doc = { getPage: vi.fn().mockResolvedValue(makePdfPage()) };
+    const doc = { getPage: vi.fn().mockResolvedValue(makePdfPage()), destroy: vi.fn().mockResolvedValue(undefined) };
     vi.mocked(pdfjsLib.getDocument).mockReturnValue({
       promise: Promise.resolve(doc),
     } as any);
@@ -227,6 +229,7 @@ describe("renderPage — E : exceptions", () => {
   it("propage l'erreur si getPage rejette (page inexistante)", async () => {
     const doc = {
       getPage: vi.fn().mockRejectedValue(new Error("Page inexistante")),
+      destroy: vi.fn().mockResolvedValue(undefined),
     };
     vi.mocked(pdfjsLib.getDocument).mockReturnValue({
       promise: Promise.resolve(doc),
