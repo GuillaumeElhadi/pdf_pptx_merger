@@ -131,7 +131,12 @@ mod win_com {
 
         // Suppress PowerPoint UI, alerts, and Protected View before opening any file.
         // These must be set before Presentations.Open to take effect.
-        prop_put(&app, "Visible", make_bool(false))?;         // hide app window
+        // Visible=False is non-fatal: Remote Desktop sessions and some Windows Server
+        // configurations reject it with "Hiding the application window is not allowed".
+        // The conversion succeeds regardless; Quit() closes the window when done.
+        if let Err(e) = prop_put(&app, "Visible", make_bool(false)) {
+            log::warn!("[convert_pptx] Could not hide PowerPoint window (non-fatal): {e}");
+        }
         prop_put(&app, "DisplayAlerts", make_i4(0))?;         // ppAlertsNone = 0
         prop_put(&app, "AutomationSecurity", make_i4(3))?;    // msoAutomationSecurityForceDisable = 3
 
