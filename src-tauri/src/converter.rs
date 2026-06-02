@@ -68,7 +68,7 @@ mod win_com {
         Win32::System::Com::{
             CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize, EXCEPINFO,
             CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_FLAGS, DISPATCH_METHOD,
-            DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
+            DISPATCH_PROPERTYGET, DISPATCH_PROPERTYPUT, DISPPARAMS, IDispatch,
         },
         Win32::System::Variant::{VARIANT, VARENUM},
         Win32::Foundation::VARIANT_BOOL,
@@ -129,18 +129,44 @@ mod win_com {
         let app: IDispatch = CoCreateInstance(&clsid, None, CLSCTX_LOCAL_SERVER)
             .map_err(|e| format!("Failed to start PowerPoint: {e}"))?;
 
+        // Suppress PowerPoint UI, alerts, and Protected View before opening any file.
+        // These must be set before Presentations.Open to take effect.
+        prop_put(&app, "Visible", make_bool(false))?;         // hide app window
+        prop_put(&app, "DisplayAlerts", make_i4(0))?;         // ppAlertsNone = 0
+        prop_put(&app, "AutomationSecurity", make_i4(3))?;    // msoAutomationSecurityForceDisable = 3
+
         // app.Presentations
         let presentations = prop_get(&app, "Presentations")?;
 
         // Presentations.Open(FileName, ReadOnly=True, Untitled=False, WithWindow=False)
         // COM Invoke args are REVERSED: last parameter is at index 0.
-        let mut open_args = [
-            make_bool(false),      // WithWindow  [param 4 → index 0]
-            make_bool(false),      // Untitled    [param 3 → index 1]
-            make_bool(true),       // ReadOnly    [param 2 → index 2]
-            make_bstr(pptx_path),  // FileName    [param 1 → index 3]
-        ];
-        let pres = method_to_disp(&presentations, "Open", &mut open_args)?;
+        // Retry up to 3 times to handle transient COM failures.
+        const MAX_ATTEMPTS: u8 = 3;
+        let mut pres_result: Result<IDispatch, String> = Err("not attempted".into());
+        for attempt in 0..MAX_ATTEMPTS {
+            // Re-create args each retry since BSTR values are owned by the caller
+            // and must be freed after each Invoke call.
+            let mut open_args = [
+                make_bool(false),      // WithWindow  [param 4 → index 0]
+                make_bool(false),      // Untitled    [param 3 → index 1]
+                make_bool(true),       // ReadOnly    [param 2 → index 2]
+                make_bstr(pptx_path),  // FileName    [param 1 → index 3]
+            ];
+            pres_result = method_to_disp(&presentations, "Open", &mut open_args);
+            clear_variant(&mut open_args[3]); // free FileName BSTR regardless of outcome
+            match &pres_result {
+                Ok(_) => break,
+                Err(e) if attempt + 1 < MAX_ATTEMPTS => {
+                    log::warn!(
+                        "[convert_pptx] Open attempt {}/{MAX_ATTEMPTS} failed: {e}",
+                        attempt + 1
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                Err(_) => break,
+            }
+        }
+        let pres = pres_result?;
 
         // pres.SaveAs(FileName, FileFormat=32 /* ppSaveAsPDF */)
         let mut save_args = [
@@ -152,8 +178,7 @@ mod win_com {
         invoke_void(&pres, "Close", &mut [])?;
         invoke_void(&app, "Quit", &mut [])?;
 
-        // Free the BSTRs we allocated as arguments
-        for v in open_args.iter_mut().chain(save_args.iter_mut()) {
+        for v in save_args.iter_mut() {
             clear_variant(v);
         }
 
@@ -219,6 +244,45 @@ mod win_com {
     unsafe fn prop_get(obj: &IDispatch, name: &str) -> Result<IDispatch, String> {
         let mut result = invoke_impl(obj, name, DISPATCH_PROPERTYGET, &mut [])?;
         extract_disp(&mut result, name)
+    }
+
+    /// Sets a property on a COM IDispatch object via DISPATCH_PROPERTYPUT.
+    /// The DISPPARAMS for property puts must include DISPID_PROPERTYPUT (-3) as a named arg.
+    unsafe fn prop_put(obj: &IDispatch, name: &str, mut value: VARIANT) -> Result<(), String> {
+        let id = get_dispid(obj, name)?;
+        const DISPID_PROPERTYPUT: i32 = -3;
+        let mut dispid_put = DISPID_PROPERTYPUT;
+        let params = DISPPARAMS {
+            rgvarg: &mut value,
+            rgdispidNamedArgs: &mut dispid_put,
+            cArgs: 1,
+            cNamedArgs: 1,
+        };
+        let mut excep = EXCEPINFO::default();
+        if let Err(e) = obj.Invoke(
+            id,
+            &GUID::zeroed(),
+            0x0409,
+            DISPATCH_PROPERTYPUT,
+            &params,
+            None,
+            Some(&mut excep),
+            None,
+        ) {
+            let detail = if e.code().0 as u32 == 0x8002_0009 {
+                let desc = excep.bstrDescription.to_string();
+                ManuallyDrop::drop(&mut excep.bstrSource);
+                ManuallyDrop::drop(&mut excep.bstrDescription);
+                ManuallyDrop::drop(&mut excep.bstrHelpFile);
+                if desc.is_empty() { e.to_string() } else { desc }
+            } else {
+                e.to_string()
+            };
+            clear_variant(&mut value);
+            return Err(format!("Set '{name}': {detail}"));
+        }
+        clear_variant(&mut value);
+        Ok(())
     }
 
     unsafe fn method_to_disp(
@@ -335,9 +399,13 @@ fn which_cmd(cmd: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::normalize_path;
+
+    // ── Unit tests: normalize_path covers all path edge cases ─────────────────
 
     #[test]
     fn forward_slashes_become_backslashes() {
@@ -352,5 +420,74 @@ mod tests {
     #[test]
     fn already_correct_unchanged() {
         assert_eq!(normalize_path("C:\\Users\\foo\\file.pptx"), "C:\\Users\\foo\\file.pptx");
+    }
+
+    #[test]
+    fn unc_path_unchanged() {
+        assert_eq!(
+            normalize_path("\\\\server\\share\\file.pptx"),
+            "\\\\server\\share\\file.pptx"
+        );
+    }
+
+    #[test]
+    fn forward_slash_unc_normalized() {
+        assert_eq!(
+            normalize_path("//server/share/file.pptx"),
+            "\\\\server\\share\\file.pptx"
+        );
+    }
+
+    #[test]
+    fn spaces_in_path_preserved() {
+        assert_eq!(
+            normalize_path("C:\\My Documents\\My File.pptx"),
+            "C:\\My Documents\\My File.pptx"
+        );
+    }
+
+    #[test]
+    fn non_ascii_chars_preserved() {
+        assert_eq!(
+            normalize_path("C:\\Réunion\\présentation.pptx"),
+            "C:\\Réunion\\présentation.pptx"
+        );
+    }
+
+    #[test]
+    fn empty_string_unchanged() {
+        assert_eq!(normalize_path(""), "");
+    }
+}
+
+// ── Integration tests: require Windows + Microsoft PowerPoint installed ────────
+// Run with: cargo test -- --ignored
+
+#[cfg(all(test, target_os = "windows"))]
+mod integration_tests {
+    #[test]
+    #[ignore = "requires Windows + Microsoft PowerPoint installed"]
+    fn integration_converts_valid_pptx() {
+        let pptx = std::env::var("PPTX_TEST_FILE")
+            .expect("Set PPTX_TEST_FILE env var to an absolute path to a valid .pptx file");
+        let out = std::env::temp_dir().join("test_output.pdf");
+        let result = super::win_com::convert(&pptx, &out.to_string_lossy());
+        assert!(result.is_ok(), "Conversion failed: {:?}", result);
+        assert!(out.exists(), "Output PDF was not created");
+        std::fs::remove_file(out).ok();
+    }
+
+    #[test]
+    #[ignore = "requires Windows + Microsoft PowerPoint installed"]
+    fn integration_path_with_spaces() {
+        let pptx = std::env::var("PPTX_TEST_FILE")
+            .expect("Set PPTX_TEST_FILE env var to a valid .pptx file path");
+        let out_dir = std::env::temp_dir().join("path with spaces");
+        std::fs::create_dir_all(&out_dir).unwrap();
+        let out = out_dir.join("output.pdf");
+        let result = super::win_com::convert(&pptx, &out.to_string_lossy());
+        assert!(result.is_ok(), "Conversion failed with spaces in path: {:?}", result);
+        assert!(out.exists(), "Output PDF was not created");
+        std::fs::remove_dir_all(out_dir).ok();
     }
 }
