@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.0...v3.12.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* comprehensive DISP_E_EXCEPTION fix for Presentations.Open on Windows ([#39](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/39)) ([b1abac2](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/b1abac29caad8768556c974cfaeb8d8154d80108))
+
 ## [3.12.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.11.0...v3.12.0) (2026-06-02)
 
 
