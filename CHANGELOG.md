@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.2](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.1...v3.12.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* make PowerPoint Visible=False non-fatal on restricted Windows environments ([#41](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/41)) ([536c212](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/536c21261c1b02a4e4422e365e6cf68afef4bb66))
+
 ## [3.12.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.0...v3.12.1) (2026-06-02)
 
 
