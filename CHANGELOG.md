@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.12.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.11.0...v3.12.0) (2026-06-02)
+
+
+### Features
+
+* generate multiple pdf when multiple owner ([#36](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/36)) ([baf7889](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/baf788928c10f887996e8a36097e1af62f64eefe))
+
+
+### Bug Fixes
+
+* resolve DISP_E_EXCEPTION (0x80020009) on Presentations.Open ([#37](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/37)) ([a61c66e](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/a61c66ec0f81cab8463a7e2813d27ca1dbb3e482))
+
 ## [3.11.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.10.0...v3.11.0) (2026-04-22)
 
 
