@@ -4,6 +4,11 @@ use std::process::Command;
 
 use crate::temp;
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn normalize_path(s: &str) -> String {
+    s.replace('/', "\\")
+}
+
 /// Converts a PPTX file to PDF and returns the output PDF path.
 /// - Windows: drives PowerPoint via COM using windows-rs (no PowerShell dependency)
 /// - macOS/Linux: uses LibreOffice (dev/testing only)
@@ -61,7 +66,7 @@ mod win_com {
     use windows::{
         core::{BSTR, GUID, PCWSTR},
         Win32::System::Com::{
-            CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize,
+            CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize, EXCEPINFO,
             CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_FLAGS, DISPATCH_METHOD,
             DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
         },
@@ -108,6 +113,11 @@ mod win_com {
     }
 
     unsafe fn do_convert(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
+        let pptx_path = super::normalize_path(pptx_path);
+        let out_pdf = super::normalize_path(out_pdf);
+        let pptx_path = pptx_path.as_str();
+        let out_pdf = out_pdf.as_str();
+
         // CLSIDFromProgID fails immediately if PowerPoint is not registered —
         // gives a clear error before attempting to launch anything.
         let clsid = CLSIDFromProgID(windows::core::w!("PowerPoint.Application")).map_err(|_| {
@@ -179,17 +189,30 @@ mod win_com {
             cNamedArgs: 0,
         };
         let mut result = VARIANT::default();
-        obj.Invoke(
+        let mut excep = EXCEPINFO::default();
+        if let Err(e) = obj.Invoke(
             id,
             &GUID::zeroed(),
             0x0409,
             flags,
             &params,
             Some(&mut result),
+            Some(&mut excep),
             None,
-            None,
-        )
-        .map_err(|e| format!("Invoke '{name}': {e}"))?;
+        ) {
+            // 0x80020009 = DISP_E_EXCEPTION: PowerPoint raised an internal exception.
+            // bstrDescription carries the real error message; fall back to the HRESULT string.
+            let detail = if e.code().0 as u32 == 0x8002_0009 {
+                let desc = excep.bstrDescription.to_string();
+                ManuallyDrop::drop(&mut excep.bstrSource);
+                ManuallyDrop::drop(&mut excep.bstrDescription);
+                ManuallyDrop::drop(&mut excep.bstrHelpFile);
+                if desc.is_empty() { e.to_string() } else { desc }
+            } else {
+                e.to_string()
+            };
+            return Err(format!("Invoke '{name}': {detail}"));
+        }
         Ok(result)
     }
 
@@ -310,4 +333,24 @@ fn which_cmd(cmd: &str) -> Option<String> {
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_path;
+
+    #[test]
+    fn forward_slashes_become_backslashes() {
+        assert_eq!(normalize_path("C:/Users/foo/file.pptx"), "C:\\Users\\foo\\file.pptx");
+    }
+
+    #[test]
+    fn mixed_slashes_normalized() {
+        assert_eq!(normalize_path("C:\\Users/foo/file.pptx"), "C:\\Users\\foo\\file.pptx");
+    }
+
+    #[test]
+    fn already_correct_unchanged() {
+        assert_eq!(normalize_path("C:\\Users\\foo\\file.pptx"), "C:\\Users\\foo\\file.pptx");
+    }
 }
