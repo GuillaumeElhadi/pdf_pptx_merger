@@ -27,7 +27,7 @@ export function useUpdater(): UseUpdaterResult {
       .catch(() => {});
     check()
       .then(setUpdate)
-      .catch(() => {});
+      .catch((err) => console.error("[updater] check() failed:", err));
   }, []);
 
   async function install() {

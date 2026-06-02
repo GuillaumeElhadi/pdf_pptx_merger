@@ -131,47 +131,33 @@ jobs:
             -f label="${NEW_NAME}"
           echo "Renamed: $OLD_NAME → $NEW_NAME"
 
-      - name: Collect and verify signatures
-        shell: bash
-        run: |
-          echo "=== Signature files found ==="
-          find src-tauri/target -name "*.sig" 2>/dev/null | while read f; do
-            SIZE=$(wc -c < "$f")
-            echo "$f ($SIZE bytes)"
-            if [ "$SIZE" -eq 0 ]; then
-              echo "ERROR: signature file is empty — signing key or password may be wrong"
-              exit 1
-            fi
-          done
-
-          mkdir -p /tmp/sigs
-          # macOS: .app.tar.gz.sig
-          find src-tauri/target -name "*.app.tar.gz.sig" 2>/dev/null \
-            -exec cp {} /tmp/sigs/macos.app.tar.gz.sig \; || true
-          # Windows: NSIS .exe.sig (not the .zip variant)
-          find src-tauri/target -path "*/nsis/*.exe.sig" 2>/dev/null \
-            -exec cp {} /tmp/sigs/windows-setup.exe.sig \; || true
-
-          echo "=== Collected for latest.json ==="
-          ls -la /tmp/sigs/
-
-      - name: Upload signatures as artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: signatures-${{ matrix.label }}
-          path: /tmp/sigs/
-          if-no-files-found: warn
-
   ensure-latest-json:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download all signature artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: signatures-*
-          merge-multiple: true
-          path: /tmp/sigs/
+      - name: Fetch signatures from release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_ID="${{ github.event.release.id || inputs.release_id }}"
+          TAG=$(gh api repos/${{ github.repository }}/releases/${RELEASE_ID} --jq '.tag_name')
+
+          mkdir -p /tmp/sigs
+
+          gh release download "$TAG" \
+            --repo ${{ github.repository }} \
+            --pattern "*_x64-setup.exe.sig" \
+            --output /tmp/sigs/windows-setup.exe.sig || \
+            echo "WARNING: Windows NSIS sig not found in release assets"
+
+          gh release download "$TAG" \
+            --repo ${{ github.repository }} \
+            --pattern "*.app.tar.gz.sig" \
+            --output /tmp/sigs/macos.app.tar.gz.sig || \
+            echo "WARNING: macOS sig not found in release assets"
+
+          echo "=== Fetched signatures ==="
+          ls -la /tmp/sigs/
 
       - name: Generate and upload latest.json
         env:
@@ -213,7 +199,8 @@ jobs:
               '. + {"windows-x86_64": {"signature": $sig, "url": $url}}')
             echo "Added windows-x86_64"
           else
-            echo "WARNING: Windows signature missing or empty"
+            echo "ERROR: Windows signature missing or empty — aborting" >&2
+            exit 1
           fi
 
           echo "$PLATFORMS" | jq \
