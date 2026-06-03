@@ -42,9 +42,9 @@ function mockDocument(
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("extractOwners — portrait PDF", () => {
-  it("retourne owners=[] et pageOwners vide sans lire les pages suivantes", async () => {
-    mockDocument([{ width: 595, height: 842, items: [] }]); // A4 portrait
+describe("extractOwners — portrait PDF sans pattern propriétaire", () => {
+  it("retourne owners=[] et pageOwners vide si aucun contenu trouvé", async () => {
+    mockDocument([{ width: 595, height: 842, items: [] }]); // A4 portrait, no owner text
     const result = await extractOwners("/doc.pdf");
     expect(result.owners).toEqual([]);
     expect(result.pageOwners.size).toBe(0);
@@ -321,5 +321,30 @@ describe("extractOwners — pageOwners : attribution par page", () => {
     // Both pages point to the same OwnerInfo object
     expect(result.pageOwners.get(1)).toBe(result.pageOwners.get(2));
     expect(result.pageOwners.get(1)).toBe(result.owners[0]);
+  });
+});
+
+describe("extractOwners — document mixte (première page portrait)", () => {
+  it("détecte les propriétaires sur les pages suivantes même si la page 1 est portrait", async () => {
+    mockDocument([
+      { width: 595, height: 842, items: [] }, // page 1: portrait cover, no owner
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("S.A.S. IMMO. CARREFOUR", 480)],
+      }, // page 2: landscape with owner
+      {
+        width: 595,
+        height: 842,
+        items: [textItem("Copropriétaire 0000002", 500), textItem("SARL DUPONT", 480)],
+      }, // page 3: portrait with second owner
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toHaveLength(2);
+    expect(result.owners[0]).toEqual({ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" });
+    expect(result.owners[1]).toEqual({ code: "0000002", name: "SARL DUPONT" });
+    expect(result.pageOwners.has(1)).toBe(false); // page 1: no owner found
+    expect(result.pageOwners.get(2)?.code).toBe("0000001");
+    expect(result.pageOwners.get(3)?.code).toBe("0000002");
   });
 });
