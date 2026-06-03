@@ -788,6 +788,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
 
     expect(writeFile).not.toHaveBeenCalled();
     expect(Bridge.pickSaveDirectory).not.toHaveBeenCalled();
+    expect(useMergeStore.getState().status).toBe("idle");
   });
 });
 

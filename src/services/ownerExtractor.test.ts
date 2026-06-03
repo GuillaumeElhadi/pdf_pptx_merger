@@ -25,7 +25,6 @@ function mockDocument(
   pages: { width: number; height: number; items: ReturnType<typeof textItem>[] }[]
 ) {
   const mockPages = pages.map((p) => ({
-    getViewport: vi.fn(() => ({ width: p.width, height: p.height })),
     getTextContent: vi.fn(() => Promise.resolve({ items: p.items })),
   }));
 
