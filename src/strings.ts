@@ -62,5 +62,7 @@ export const strings = {
       "Charger un nouveau PowerPoint remplacera toutes les diapositives existantes. Continuer ?",
     reuseOutput: (path: string) => `Réutiliser le fichier de sortie précédent ?\n${path}`,
     reuseOutputSplit: (path: string) => `Réutiliser le dossier de sortie précédent ?\n${path}`,
+    multiOwnerSplit: (count: number, names: string) =>
+      `${count} copropriétaires détectés : ${names}.\nCela créera ${count} fichiers PDF séparés. Continuer ?`,
   },
 };
