@@ -514,6 +514,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(mergedDocY as any);
     vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(2) as any);
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({ items: [pdfItem] });
     await useMergeStore.getState().generate();
@@ -541,6 +542,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(mergedDocY as any);
     vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(2) as any);
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({ items: [pdfItem] });
     await useMergeStore.getState().generate();
@@ -572,6 +574,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(makeSourceDoc(1) as any) // /no.pdf (1 page)
       .mockResolvedValueOnce(makeSourceDoc(2) as any); // /ab.pdf (2 pages)
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({ items: [pdfNoOwner, pdfWithOwners] });
     await useMergeStore.getState().generate();
@@ -603,6 +606,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(makeSourceDoc(1) as any) // /x.pdf
       .mockResolvedValueOnce(makeSourceDoc(1) as any); // /y.pdf
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({ items: [pdfX, pdfY] });
     await useMergeStore.getState().generate();
@@ -632,6 +636,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(mergedDocY as any);
     vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(3) as any);
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({ items: [pdfItem] });
     await useMergeStore.getState().generate();
@@ -680,6 +685,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(mergedDocY as any);
     vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(2) as any);
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({ items: [pdfItem] });
     await useMergeStore.getState().generate();
@@ -721,6 +727,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(mergedDocB as any);
     vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(2) as any);
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({ items: [pdfItem] });
     await useMergeStore.getState().generate();
@@ -750,6 +757,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
       .mockResolvedValueOnce(makeSourceDoc(2) as any) // /a.pdf
       .mockResolvedValueOnce(makeSourceDoc(3) as any); // /slides.pdf
     vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useMergeStore.setState({
       items: [slide, pdfItem],
@@ -761,6 +769,25 @@ describe("generate — multi-owner : split par propriétaire", () => {
     expect(mergedDocX.addPage).toHaveBeenCalledTimes(2);
     // Y output: 1 slide + 1 pdf page (page2=Y) = 2 addPage calls
     expect(mergedDocY.addPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("annuler la boîte de confirmation → aucun fichier écrit", async () => {
+    const pageOwnersMap = new Map([
+      [1, ownerX],
+      [2, ownerY],
+    ]);
+    const pdfItem: PdfItem = {
+      ...makePdf("a", "/a.pdf"),
+      owners: [ownerX, ownerY],
+      pageOwners: pageOwnersMap,
+    };
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    useMergeStore.setState({ items: [pdfItem] });
+    await useMergeStore.getState().generate();
+
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(Bridge.pickSaveDirectory).not.toHaveBeenCalled();
   });
 });
 

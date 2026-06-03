@@ -261,6 +261,14 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     }
     const isMultiOwner = allOwners.size > 1;
 
+    if (isMultiOwner) {
+      const ownerNames = Array.from(allOwners.values())
+        .map((o) => o.name)
+        .join(", ");
+      const proceed = confirm(strings.confirm.multiOwnerSplit(allOwners.size, ownerNames));
+      if (!proceed) return;
+    }
+
     // Use separate last-path memory for file vs directory modes
     const previousPath = isMultiOwner ? lastOutputDir : lastOutputPath;
 
