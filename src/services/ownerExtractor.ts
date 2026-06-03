@@ -86,24 +86,19 @@ function parseOwner(lines: Line[]): OwnerInfo | null {
 }
 
 /**
- * Returns owners found across all pages of a landscape PDF, with per-page attribution.
- * Returns empty owners/pageOwners for portrait PDFs or when no owner pattern is detected.
+ * Returns owners found across all pages of a PDF, with per-page attribution.
+ * Returns empty owners/pageOwners when no owner pattern is detected.
  */
 export async function extractOwners(pdfPath: string): Promise<ExtractionResult> {
   const url = convertFileSrc(pdfPath);
   const pdf = await pdfjsLib.getDocument(url).promise;
 
   try {
-    // Only landscape PDFs contain per-owner pages
-    const firstPage = await pdf.getPage(1);
-    const viewport = firstPage.getViewport({ scale: 1 });
-    if (viewport.width <= viewport.height) return { owners: [], pageOwners: new Map() };
-
     const found = new Map<string, OwnerInfo>();
     const pageOwners = new Map<number, OwnerInfo>();
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = pageNum === 1 ? firstPage : await pdf.getPage(pageNum);
+      const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
       const lines = buildLines(content.items);
       const owner = parseOwner(lines);
