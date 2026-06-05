@@ -147,23 +147,39 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
     set((s) => ({
       items: [...s.items, ...newItems],
-      statusMessage: strings.status.pdfsAdded(newItems.length),
+      status: "extracting" as const,
+      statusMessage: strings.status.extractingOwners(0, newItems.length),
+      progress: 0,
     }));
 
-    // Enrich each new PDF with owner info in the background (non-blocking)
-    newItems.forEach(async (item) => {
-      try {
-        const { owners, pageOwners } = await extractOwners(item.pdfPath);
-        set((s) => ({
-          items: s.items.map((i) => (i.id === item.id ? { ...i, owners, pageOwners } : i)),
-        }));
-      } catch (e) {
-        logger.warn("addPdfs:extractOwners", `id=${item.id} — ${String(e)}`);
-        set((s) => ({
-          items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
-        }));
+    let done = 0;
+    try {
+      for (const item of newItems) {
+        try {
+          const { owners, pageOwners } = await extractOwners(item.pdfPath);
+          done++;
+          set((s) => ({
+            items: s.items.map((i) => (i.id === item.id ? { ...i, owners, pageOwners } : i)),
+            progress: done / newItems.length,
+            statusMessage: strings.status.extractingOwners(done, newItems.length),
+          }));
+        } catch (e) {
+          logger.warn("addPdfs:extractOwners", `id=${item.id} — ${String(e)}`);
+          done++;
+          set((s) => ({
+            items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
+            progress: done / newItems.length,
+            statusMessage: strings.status.extractingOwners(done, newItems.length),
+          }));
+        }
       }
-    });
+    } finally {
+      set({
+        status: "idle",
+        progress: null,
+        statusMessage: strings.status.pdfsAdded(newItems.length),
+      });
+    }
   },
 
   // ── removeItem ────────────────────────────────────────────────────────────

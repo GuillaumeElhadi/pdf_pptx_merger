@@ -81,6 +81,27 @@ describe("StatusBar — état converting", () => {
   });
 });
 
+describe("StatusBar — état extracting", () => {
+  it("affiche le spinner et le message d'analyse", () => {
+    useMergeStore.setState({
+      status: "extracting",
+      statusMessage: "Analyse des propriétaires… 1/5",
+      progress: 0.2,
+    });
+    render(<StatusBar update={null} currentVersion="3.8.0" onUpdateClick={() => {}} />);
+    expect(screen.getByText("⏳")).toBeInTheDocument();
+    expect(screen.getByText("Analyse des propriétaires… 1/5")).toBeInTheDocument();
+  });
+
+  it("affiche la barre de progression pendant l'analyse", () => {
+    useMergeStore.setState({ status: "extracting", progress: 0.4, statusMessage: "" });
+    const { container } = render(
+      <StatusBar update={null} currentVersion="3.8.0" onUpdateClick={() => {}} />
+    );
+    expect(container.querySelector("[style*='40%']")).toBeInTheDocument();
+  });
+});
+
 describe("StatusBar — état merging avec progression", () => {
   it("affiche le spinner et le message de fusion", () => {
     useMergeStore.setState({
