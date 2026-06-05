@@ -5,8 +5,11 @@ let workerInstance: Worker | null = null;
 
 async function ensureWorker(): Promise<Worker> {
   if (!workerInstance) {
+    const base = window.location.origin + "/tessdata";
     workerInstance = await createWorker("fra", 1, {
-      langPath: `${window.location.origin}/tessdata`,
+      workerPath: `${base}/worker.min.js`,
+      langPath: base,
+      corePath: base,
       // Suppress Tesseract's per-page progress logs in the browser console
       logger: () => {},
     });
