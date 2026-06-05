@@ -30,18 +30,24 @@ export async function ocrPage(page: PDFPageProxy, strategy: "crop" | "full"): Pr
   const fullHeight = Math.floor(viewport.height);
   const height = strategy === "crop" ? Math.floor(fullHeight * 0.35) : fullHeight;
 
-  const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
+  // Use a regular canvas (not OffscreenCanvas) so toDataURL() works without
+  // creating a blob: URL. Tesseract's worker cannot fetch blob: URLs in Tauri's
+  // WebView — passing a data URL avoids any network fetch entirely.
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Failed to get 2D canvas context");
 
   await page.render({
-    canvasContext: ctx as unknown as CanvasRenderingContext2D,
+    canvasContext: ctx,
     viewport,
   }).promise;
 
-  const blob = await canvas.convertToBlob({ type: "image/png" });
+  const dataUrl = canvas.toDataURL("image/png");
   const worker = await ensureWorker();
   const {
     data: { text },
-  } = await worker.recognize(blob);
+  } = await worker.recognize(dataUrl);
   return text;
 }
