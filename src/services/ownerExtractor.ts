@@ -118,6 +118,16 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
     const pageOwners = new Map<number, OwnerInfo>();
 
     const filename = pdfPath.split(/[\\/]/).pop();
+    // Log first page content unconditionally so we can see the document structure.
+    {
+      const firstPage = await pdf.getPage(1);
+      const firstContent = await firstPage.getTextContent();
+      const firstLines = buildLines(firstContent.items);
+      console.log(
+        `[extractOwners] ${filename} — premières lignes p.1:`,
+        firstLines.slice(0, 8).map((l) => l.text)
+      );
+    }
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
