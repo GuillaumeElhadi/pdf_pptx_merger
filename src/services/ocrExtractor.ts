@@ -10,6 +10,7 @@ async function ensureWorker(): Promise<Worker> {
       workerPath: `${base}/worker.min.js`,
       langPath: base,
       corePath: base,
+      gzip: false,
       // Suppress Tesseract's per-page progress logs in the browser console
       logger: () => {},
     });
@@ -30,24 +31,41 @@ export async function ocrPage(page: PDFPageProxy, strategy: "crop" | "full"): Pr
   const fullHeight = Math.floor(viewport.height);
   const height = strategy === "crop" ? Math.floor(fullHeight * 0.35) : fullHeight;
 
-  // Use a regular canvas (not OffscreenCanvas) so toDataURL() works without
-  // creating a blob: URL. Tesseract's worker cannot fetch blob: URLs in Tauri's
-  // WebView — passing a data URL avoids any network fetch entirely.
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Failed to get 2D canvas context");
 
-  await page.render({
-    canvasContext: ctx,
-    viewport,
-  }).promise;
+  console.info("[ocrPage] rendering page to canvas...");
+  try {
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    console.info("[ocrPage] render OK");
+  } catch (e) {
+    console.error("[ocrPage] render FAILED:", String(e));
+    throw e;
+  }
 
   const dataUrl = canvas.toDataURL("image/png");
-  const worker = await ensureWorker();
-  const {
-    data: { text },
-  } = await worker.recognize(dataUrl);
-  return text;
+  console.info("[ocrPage] dataUrl ready, length:", dataUrl.length);
+
+  let worker: Worker;
+  try {
+    worker = await ensureWorker();
+    console.info("[ocrPage] worker ready");
+  } catch (e) {
+    console.error("[ocrPage] ensureWorker FAILED:", String(e));
+    throw e;
+  }
+
+  try {
+    const {
+      data: { text },
+    } = await worker.recognize(dataUrl);
+    console.info("[ocrPage] recognize OK, chars:", text.length);
+    return text;
+  } catch (e) {
+    console.error("[ocrPage] recognize FAILED:", String(e));
+    throw e;
+  }
 }
