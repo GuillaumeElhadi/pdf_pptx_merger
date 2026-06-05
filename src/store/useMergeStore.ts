@@ -155,17 +155,26 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     let done = 0;
     try {
       for (const item of newItems) {
+        const filename = item.pdfPath.split(/[\\/]/).pop() ?? item.pdfPath;
+        logger.info("addPdfs:extractOwners", `start ${done + 1}/${newItems.length} — ${filename}`);
         try {
           const { owners, pageOwners } = await extractOwners(item.pdfPath);
           done++;
+          logger.info(
+            "addPdfs:extractOwners",
+            `done  ${done}/${newItems.length} — ${filename} (${owners.length} owner${owners.length !== 1 ? "s" : ""})`
+          );
           set((s) => ({
             items: s.items.map((i) => (i.id === item.id ? { ...i, owners, pageOwners } : i)),
             progress: done / newItems.length,
             statusMessage: strings.status.extractingOwners(done, newItems.length),
           }));
         } catch (e) {
-          logger.warn("addPdfs:extractOwners", `id=${item.id} — ${String(e)}`);
           done++;
+          logger.warn(
+            "addPdfs:extractOwners",
+            `fail  ${done}/${newItems.length} — ${filename} — ${String(e)}`
+          );
           set((s) => ({
             items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
             progress: done / newItems.length,

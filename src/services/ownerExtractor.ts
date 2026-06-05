@@ -85,13 +85,33 @@ function parseOwner(lines: Line[]): OwnerInfo | null {
   return null;
 }
 
+/** Maximum time to wait for pdfjs to load a single PDF before giving up. */
+const LOAD_TIMEOUT_MS = 20_000;
+
 /**
  * Returns owners found across all pages of a PDF, with per-page attribution.
  * Returns empty owners/pageOwners when no owner pattern is detected.
+ * Throws if the PDF fails to load or doesn't load within LOAD_TIMEOUT_MS.
  */
 export async function extractOwners(pdfPath: string): Promise<ExtractionResult> {
   const url = convertFileSrc(pdfPath);
-  const pdf = await pdfjsLib.getDocument(url).promise;
+  const loadTask = pdfjsLib.getDocument(url);
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      loadTask.destroy().catch(() => {});
+      reject(
+        new Error(
+          `Timeout after ${LOAD_TIMEOUT_MS / 1000}s loading ${pdfPath.split(/[\\/]/).pop()}`
+        )
+      );
+    }, LOAD_TIMEOUT_MS);
+  });
+
+  const pdf = await Promise.race([loadTask.promise, timeout]).finally(() => {
+    clearTimeout(timeoutId);
+  });
 
   try {
     const found = new Map<string, OwnerInfo>();
