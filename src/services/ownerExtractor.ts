@@ -1,5 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { ocrPage } from "./ocrExtractor";
 
 export interface OwnerInfo {
   code: string; // e.g. "0000001"
@@ -122,40 +123,37 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
     const found = new Map<string, OwnerInfo>();
     const pageOwners = new Map<number, OwnerInfo>();
 
-    const filename = pdfPath.split(/[\\/]/).pop();
-    // Log first page content unconditionally so we can see the document structure.
-    {
-      const firstPage = await pdf.getPage(1);
-      const firstContent = await firstPage.getTextContent();
-      const firstLines = buildLines(firstContent.items);
-      console.info(
-        `[extractOwners] ${filename} — premières lignes p.1: ${JSON.stringify(firstLines.slice(0, 8).map((l) => l.text))}`
-      );
-    }
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
-      const lines = buildLines(content.items);
-      const owner = parseOwner(lines);
+      const hasText = content.items.some((i) => isPdfTextItem(i) && i.str.trim().length > 0);
+
+      let owner: OwnerInfo | null = null;
+
+      if (hasText) {
+        owner = parseOwner(buildLines(content.items));
+      } else {
+        const cropText = await ocrPage(page, "crop");
+        owner = matchOwner(
+          cropText
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+        );
+        if (!owner) {
+          const fullText = await ocrPage(page, "full");
+          owner = matchOwner(
+            fullText
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean)
+          );
+        }
+      }
+
       if (owner) {
         if (!found.has(owner.code)) found.set(owner.code, owner);
         pageOwners.set(pageNum, found.get(owner.code)!);
-      } else {
-        // Log raw lines for any page that contains "copro" but didn't match —
-        // this reveals encoding differences, unexpected splits, or alternate labels.
-        const suspectLines = lines.filter((l) => /copro/i.test(l.text));
-        if (suspectLines.length > 0) {
-          console.warn(
-            `[extractOwners] ${filename} p.${pageNum} — "copro" trouvé mais pas matché :`,
-            suspectLines.map((l) => ({
-              y: l.y,
-              text: l.text,
-              repr: [...l.text]
-                .map((c) => `U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`)
-                .join(""),
-            }))
-          );
-        }
       }
     }
 

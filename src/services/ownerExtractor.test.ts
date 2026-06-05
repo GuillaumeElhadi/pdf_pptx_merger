@@ -11,9 +11,14 @@ vi.mock("pdfjs-dist", () => ({
   getDocument: vi.fn(),
 }));
 
+vi.mock("./ocrExtractor", () => ({
+  ocrPage: vi.fn().mockResolvedValue(""),
+}));
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 import * as pdfjsLib from "pdfjs-dist";
+import { ocrPage } from "./ocrExtractor";
 
 /** Builds a mock pdfjs TextItem at the given y position. */
 function textItem(str: string, y: number) {
@@ -26,6 +31,8 @@ function mockDocument(
 ) {
   const mockPages = pages.map((p) => ({
     getTextContent: vi.fn(() => Promise.resolve({ items: p.items })),
+    getViewport: vi.fn(() => ({ width: p.width, height: p.height })),
+    render: vi.fn(() => ({ promise: Promise.resolve() })),
   }));
 
   vi.mocked(pdfjsLib.getDocument).mockReturnValue({
@@ -345,5 +352,46 @@ describe("extractOwners — document mixte (première page portrait)", () => {
     expect(result.pageOwners.has(1)).toBe(false); // page 1: no owner found
     expect(result.pageOwners.get(2)?.code).toBe("0000001");
     expect(result.pageOwners.get(3)?.code).toBe("0000002");
+  });
+});
+
+describe("extractOwners — fallback OCR (page sans texte)", () => {
+  it("appelle ocrPage('crop') quand une page n'a aucun item texte", async () => {
+    vi.mocked(ocrPage).mockResolvedValue("Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR");
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "crop");
+    expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
+  });
+
+  it("n'appelle pas ocrPage('full') si le crop a trouvé un propriétaire", async () => {
+    vi.mocked(ocrPage).mockResolvedValue("Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR");
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    await extractOwners("/doc.pdf");
+    expect(ocrPage).toHaveBeenCalledTimes(1);
+    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "crop");
+  });
+
+  it("escalade vers ocrPage('full') si le crop ne trouve pas de propriétaire", async () => {
+    vi.mocked(ocrPage)
+      .mockResolvedValueOnce("Texte sans propriétaire dans le bandeau")
+      .mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(ocrPage).toHaveBeenNthCalledWith(1, expect.anything(), "crop");
+    expect(ocrPage).toHaveBeenNthCalledWith(2, expect.anything(), "full");
+    expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
+  });
+
+  it("n'appelle pas ocrPage quand la page a du texte", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("S.A.S. IMMO. CARREFOUR", 480)],
+      },
+    ]);
+    await extractOwners("/doc.pdf");
+    expect(ocrPage).not.toHaveBeenCalled();
   });
 });
