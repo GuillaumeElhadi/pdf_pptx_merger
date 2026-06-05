@@ -30,6 +30,7 @@
     "pdfjs-dist": "^4.10.38",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "tesseract.js": "^7.0.0",
     "uuid": "^13.0.0",
     "zustand": "^5.0.12"
   },
