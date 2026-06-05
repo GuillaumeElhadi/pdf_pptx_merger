@@ -153,6 +153,8 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     }));
 
     let done = 0;
+    let failedCount = 0;
+    const allFoundOwners = new Map<string, OwnerInfo>();
     try {
       for (const item of newItems) {
         const filename = item.pdfPath.split(/[\\/]/).pop() ?? item.pdfPath;
@@ -160,6 +162,9 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         try {
           const { owners, pageOwners } = await extractOwners(item.pdfPath);
           done++;
+          for (const o of owners) {
+            if (!allFoundOwners.has(o.code)) allFoundOwners.set(o.code, o);
+          }
           logger.info(
             "addPdfs:extractOwners",
             `done  ${done}/${newItems.length} — ${filename} (${owners.length} owner${owners.length !== 1 ? "s" : ""})`
@@ -171,6 +176,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
           }));
         } catch (e) {
           done++;
+          failedCount++;
           logger.warn(
             "addPdfs:extractOwners",
             `fail  ${done}/${newItems.length} — ${filename} — ${String(e)}`
@@ -183,6 +189,13 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         }
       }
     } finally {
+      const ownerNames = Array.from(allFoundOwners.values())
+        .map((o) => `${o.name} (${o.code})`)
+        .join(", ");
+      logger.info(
+        "addPdfs:extractOwners",
+        `complete — ${newItems.length} PDF${newItems.length !== 1 ? "s" : ""}, ${allFoundOwners.size} propriétaire${allFoundOwners.size !== 1 ? "s" : ""} distinct${allFoundOwners.size !== 1 ? "s" : ""}${failedCount ? ` (${failedCount} en échec)` : ""}${ownerNames ? ` : ${ownerNames}` : ""}`
+      );
       set({
         status: "idle",
         progress: null,
