@@ -117,6 +117,7 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
     const found = new Map<string, OwnerInfo>();
     const pageOwners = new Map<number, OwnerInfo>();
 
+    const filename = pdfPath.split(/[\\/]/).pop();
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
@@ -125,6 +126,22 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
       if (owner) {
         if (!found.has(owner.code)) found.set(owner.code, owner);
         pageOwners.set(pageNum, found.get(owner.code)!);
+      } else {
+        // Log raw lines for any page that contains "copro" but didn't match —
+        // this reveals encoding differences, unexpected splits, or alternate labels.
+        const suspectLines = lines.filter((l) => /copro/i.test(l.text));
+        if (suspectLines.length > 0) {
+          console.warn(
+            `[extractOwners] ${filename} p.${pageNum} — "copro" trouvé mais pas matché :`,
+            suspectLines.map((l) => ({
+              y: l.y,
+              text: l.text,
+              repr: [...l.text]
+                .map((c) => `U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`)
+                .join(""),
+            }))
+          );
+        }
       }
     }
 
