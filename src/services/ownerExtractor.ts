@@ -123,9 +123,8 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
       const firstPage = await pdf.getPage(1);
       const firstContent = await firstPage.getTextContent();
       const firstLines = buildLines(firstContent.items);
-      console.log(
-        `[extractOwners] ${filename} — premières lignes p.1:`,
-        firstLines.slice(0, 8).map((l) => l.text)
+      console.info(
+        `[extractOwners] ${filename} — premières lignes p.1: ${JSON.stringify(firstLines.slice(0, 8).map((l) => l.text))}`
       );
     }
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
