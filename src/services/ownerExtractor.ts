@@ -48,18 +48,20 @@ function buildLines(items: unknown[]): Line[] {
     .map(([y, parts]) => ({ y, text: parts.join(" ").trim() }));
 }
 
-/** Returns the first OwnerInfo found in the given line sequence, or null. */
-function parseOwner(lines: Line[]): OwnerInfo | null {
-  for (let i = 0; i < lines.length; i++) {
-    if (!/Copropri[eé]taire/i.test(lines[i].text)) continue;
+/**
+ * Core matching logic operating on plain ordered strings (top-to-bottom).
+ * Used by both the text path (via buildLines) and the OCR path (split on '\n').
+ */
+function matchOwner(orderedLines: string[]): OwnerInfo | null {
+  for (let i = 0; i < orderedLines.length; i++) {
+    const line = orderedLines[i];
+    if (!/Copropri[eé]taire/i.test(line)) continue;
 
-    // Code may be on the same line as the label — must follow the keyword, not precede it
-    let code = lines[i].text.match(/Copropri[eé]taire\s+(\d{4,})/i)?.[1];
+    let code = line.match(/Copropri[eé]taire\s+(\d{4,})/i)?.[1];
     let nameLineIndex = i + 1;
 
-    // Or the code may be alone on the very next line
-    if (!code && i + 1 < lines.length) {
-      const m = lines[i + 1].text.match(/^(\d{4,})$/);
+    if (!code && i + 1 < orderedLines.length) {
+      const m = orderedLines[i + 1].match(/^(\d{4,})$/);
       if (m) {
         code = m[1];
         nameLineIndex = i + 2;
@@ -68,21 +70,24 @@ function parseOwner(lines: Line[]): OwnerInfo | null {
 
     if (!code) continue;
 
-    // Skip address/postal-code lines (they start with a digit: "93 Avenue de Paris", "91 3 00 MASSY")
-    while (nameLineIndex < lines.length && /^\d/.test(lines[nameLineIndex].text)) {
+    while (nameLineIndex < orderedLines.length && /^\d/.test(orderedLines[nameLineIndex])) {
       nameLineIndex++;
     }
 
-    const nameLine = lines[nameLineIndex];
-    if (!nameLine?.text) continue;
+    const nameLine = orderedLines[nameLineIndex];
+    if (!nameLine) continue;
 
-    // Strip right-column budget period text that pdf.js merges onto the same y as the name
-    const name = nameLine.text.replace(/\s+Exercice\s+du\s+.*$/i, "").trim();
+    const name = nameLine.replace(/\s+Exercice\s+du\s+.*$/i, "").trim();
     if (!name) continue;
 
     return { code, name };
   }
   return null;
+}
+
+/** Returns the first OwnerInfo found in the given pdfjs Line sequence, or null. */
+function parseOwner(lines: Line[]): OwnerInfo | null {
+  return matchOwner(lines.map((l) => l.text));
 }
 
 /** Maximum time to wait for pdfjs to load a single PDF before giving up. */
