@@ -7,6 +7,8 @@ async function ensureWorker(): Promise<Worker> {
   if (!workerInstance) {
     workerInstance = await createWorker("fra", 1, {
       langPath: `${window.location.origin}/tessdata`,
+      // Suppress Tesseract's per-page progress logs in the browser console
+      logger: () => {},
     });
   }
   return workerInstance;
