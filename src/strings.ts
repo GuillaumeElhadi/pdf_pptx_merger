@@ -47,6 +47,8 @@ export const strings = {
       `PowerPoint chargé — ${count} diapositive${count !== 1 ? "s" : ""} disponible${count !== 1 ? "s" : ""}.`,
     pdfsAdded: (count: number) =>
       `${count} PDF${count !== 1 ? "s" : ""} ajouté${count !== 1 ? "s" : ""}.`,
+    pdfsAddedWithOwners: (pdfCount: number, ownerCount: number) =>
+      `${pdfCount} PDF${pdfCount !== 1 ? "s" : ""} ajouté${pdfCount !== 1 ? "s" : ""} — ${ownerCount} propriétaire${ownerCount !== 1 ? "s" : ""} détecté${ownerCount !== 1 ? "s" : ""}.`,
     extractingOwners: (done: number, total: number) =>
       `Analyse des propriétaires… ${done}/${total}`,
     preparingMerge: "Préparation de la fusion…",

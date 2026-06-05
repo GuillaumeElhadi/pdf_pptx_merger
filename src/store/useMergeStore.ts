@@ -199,7 +199,10 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       set({
         status: "idle",
         progress: null,
-        statusMessage: strings.status.pdfsAdded(newItems.length),
+        statusMessage:
+          allFoundOwners.size > 0
+            ? strings.status.pdfsAddedWithOwners(newItems.length, allFoundOwners.size)
+            : strings.status.pdfsAdded(newItems.length),
       });
     }
   },
