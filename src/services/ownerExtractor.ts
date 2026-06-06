@@ -1,6 +1,7 @@
 import * as pdfjsLib from "pdfjs-dist";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { ocrPage } from "./ocrExtractor";
+import { ocrPage, ocrPageWithAutoRotation } from "./ocrExtractor";
+import type { Rotation } from "../types";
 
 export interface OwnerInfo {
   code: string; // e.g. "0000001"
@@ -12,6 +13,8 @@ export interface ExtractionResult {
   owners: OwnerInfo[];
   /** 1-based page number → owner. Pages absent from the map are orphans (included in all outputs). */
   pageOwners: Map<number, OwnerInfo>;
+  /** 1-based page → rotation correction (degrees CCW). Only non-zero entries stored. */
+  pageRotationCorrections: Map<number, Rotation>;
 }
 
 // Minimal shape we use from pdfjs TextItem
@@ -83,6 +86,22 @@ function matchOwner(orderedLines: string[]): OwnerInfo | null {
 
     return { code, name };
   }
+
+  // Pattern 2: "Edition par Coproprietaire" — owner appears as subtitle after date range line
+  for (let i = 0; i < orderedLines.length; i++) {
+    if (!/^Du\s+\d{2}\/\d{2}\/\d{4}\s+au\s+\d{2}\/\d{2}\/\d{4}/i.test(orderedLines[i])) continue;
+
+    let nameLineIndex = i + 1;
+    while (nameLineIndex < orderedLines.length && /^\d/.test(orderedLines[nameLineIndex])) {
+      nameLineIndex++;
+    }
+
+    const nameLine = orderedLines[nameLineIndex]?.trim();
+    if (!nameLine) continue;
+
+    return { code: nameLine, name: nameLine };
+  }
+
   return null;
 }
 
@@ -122,6 +141,8 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
   try {
     const found = new Map<string, OwnerInfo>();
     const pageOwners = new Map<number, OwnerInfo>();
+    const pageRotationCorrections = new Map<number, Rotation>();
+    let currentOwner: OwnerInfo | null = null;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
@@ -133,7 +154,7 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
       if (hasText) {
         owner = parseOwner(buildLines(content.items));
       } else {
-        const cropText = await ocrPage(page, "crop");
+        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(page, "crop");
         owner = matchOwner(
           cropText
             .split("\n")
@@ -141,7 +162,7 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
             .filter(Boolean)
         );
         if (!owner) {
-          const fullText = await ocrPage(page, "full");
+          const fullText = await ocrPage(page, "full", rotationCorrection);
           owner = matchOwner(
             fullText
               .split("\n")
@@ -149,15 +170,19 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
               .filter(Boolean)
           );
         }
+        if (rotationCorrection !== 0) pageRotationCorrections.set(pageNum, rotationCorrection);
       }
 
       if (owner) {
         if (!found.has(owner.code)) found.set(owner.code, owner);
-        pageOwners.set(pageNum, found.get(owner.code)!);
+        currentOwner = found.get(owner.code)!;
+      }
+      if (currentOwner) {
+        pageOwners.set(pageNum, currentOwner);
       }
     }
 
-    return { owners: Array.from(found.values()), pageOwners };
+    return { owners: Array.from(found.values()), pageOwners, pageRotationCorrections };
   } finally {
     await pdf.destroy();
   }

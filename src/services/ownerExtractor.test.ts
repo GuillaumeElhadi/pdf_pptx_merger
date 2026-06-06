@@ -13,12 +13,14 @@ vi.mock("pdfjs-dist", () => ({
 
 vi.mock("./ocrExtractor", () => ({
   ocrPage: vi.fn().mockResolvedValue(""),
+  ocrPageWithAutoRotation: vi.fn().mockResolvedValue({ text: "", rotationCorrection: 0 }),
 }));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 import * as pdfjsLib from "pdfjs-dist";
 import { ocrPage } from "./ocrExtractor";
+import { ocrPageWithAutoRotation } from "./ocrExtractor";
 
 /** Builds a mock pdfjs TextItem at the given y position. */
 function textItem(str: string, y: number) {
@@ -355,35 +357,94 @@ describe("extractOwners — document mixte (première page portrait)", () => {
   });
 });
 
+describe("extractOwners — carry-forward : pages sans label héritent du dernier owner", () => {
+  it("page de contenu sans label hérite du propriétaire de la page précédente", async () => {
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("OWNER A", 480)],
+      },
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Tableau de répartition des charges", 500)],
+      },
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000002", 500), textItem("OWNER B", 480)],
+      },
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Tableau de répartition des charges", 500)],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toHaveLength(2);
+    expect(result.pageOwners.get(1)?.code).toBe("0000001");
+    expect(result.pageOwners.get(2)?.code).toBe("0000001");
+    expect(result.pageOwners.get(3)?.code).toBe("0000002");
+    expect(result.pageOwners.get(4)?.code).toBe("0000002");
+  });
+
+  it("page avant tout owner reste orpheline (absente de pageOwners)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [textItem("Rapport annuel 2025", 500)],
+      },
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("OWNER A", 480)],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageOwners.has(1)).toBe(false);
+    expect(result.pageOwners.get(2)?.code).toBe("0000001");
+  });
+});
+
 describe("extractOwners — fallback OCR (page sans texte)", () => {
-  it("appelle ocrPage('crop') quand une page n'a aucun item texte", async () => {
-    vi.mocked(ocrPage).mockResolvedValue("Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR");
+  it("appelle ocrPageWithAutoRotation('crop') quand une page n'a aucun item texte", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 0,
+    });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "crop");
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), "crop");
     expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
   });
 
-  it("n'appelle pas ocrPage('full') si le crop a trouvé un propriétaire", async () => {
-    vi.mocked(ocrPage).mockResolvedValue("Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR");
+  it("n'appelle pas ocrPage('full') si ocrPageWithAutoRotation a trouvé un propriétaire", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 0,
+    });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     await extractOwners("/doc.pdf");
-    expect(ocrPage).toHaveBeenCalledTimes(1);
-    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "crop");
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
+    expect(ocrPage).not.toHaveBeenCalled();
   });
 
-  it("escalade vers ocrPage('full') si le crop ne trouve pas de propriétaire", async () => {
-    vi.mocked(ocrPage)
-      .mockResolvedValueOnce("Texte sans propriétaire dans le bandeau")
-      .mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
+  it("escalade vers ocrPage('full', rotationCorrection) si le crop ne trouve pas de propriétaire", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Texte sans propriétaire dans le bandeau",
+      rotationCorrection: 90,
+    });
+    vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPage).toHaveBeenNthCalledWith(1, expect.anything(), "crop");
-    expect(ocrPage).toHaveBeenNthCalledWith(2, expect.anything(), "full");
+    expect(ocrPageWithAutoRotation).toHaveBeenNthCalledWith(1, expect.anything(), "crop");
+    expect(ocrPage).toHaveBeenNthCalledWith(1, expect.anything(), "full", 90);
     expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
   });
 
-  it("n'appelle pas ocrPage quand la page a du texte", async () => {
+  it("n'appelle pas ocrPage ni ocrPageWithAutoRotation quand la page a du texte", async () => {
     mockDocument([
       {
         width: 595,
@@ -393,5 +454,127 @@ describe("extractOwners — fallback OCR (page sans texte)", () => {
     ]);
     await extractOwners("/doc.pdf");
     expect(ocrPage).not.toHaveBeenCalled();
+    expect(ocrPageWithAutoRotation).not.toHaveBeenCalled();
+  });
+});
+
+describe("extractOwners — format 'Edition par Coproprietaire' (sous-titre après plage de dates)", () => {
+  it("détecte le nom sur la ligne suivant 'Du XX/XX/XXXX au XX/XX/XXXX' (chemin texte)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          textItem("10189 SDC CC ST POL JARDINS", 700),
+          textItem("T5 PPA CLOS EN 2025", 650),
+          textItem("Du 01/01/2025 au 31/12/2025", 600),
+          textItem("CARREFOUR HYPER.", 560),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "CARREFOUR HYPER.", name: "CARREFOUR HYPER." }]);
+    expect(result.pageOwners.get(1)?.name).toBe("CARREFOUR HYPER.");
+  });
+
+  it("détecte plusieurs owners distincts sur des pages différentes", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [textItem("Du 01/01/2025 au 31/12/2025", 600), textItem("CARREFOUR HYPER.", 560)],
+      },
+      {
+        width: 595,
+        height: 842,
+        items: [
+          textItem("Du 01/01/2025 au 31/12/2025", 600),
+          textItem("CONFORAMA DEVELOPPEMENT 12", 560),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toHaveLength(2);
+    expect(result.owners[0].name).toBe("CARREFOUR HYPER.");
+    expect(result.owners[1].name).toBe("CONFORAMA DEVELOPPEMENT 12");
+    expect(result.pageOwners.get(1)?.name).toBe("CARREFOUR HYPER.");
+    expect(result.pageOwners.get(2)?.name).toBe("CONFORAMA DEVELOPPEMENT 12");
+  });
+
+  it("fonctionne via OCR quand la page est scannée (pas de texte)", async () => {
+    vi.mocked(ocrPage).mockResolvedValueOnce("Du 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.");
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "CARREFOUR HYPER.", name: "CARREFOUR HYPER." }]);
+    expect(result.pageOwners.get(1)?.name).toBe("CARREFOUR HYPER.");
+  });
+
+  it("déduplique le même owner présent sur plusieurs pages (même nom = même code)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [textItem("Du 01/01/2025 au 31/12/2025", 600), textItem("CARREFOUR HYPER.", 560)],
+      },
+      {
+        width: 595,
+        height: 842,
+        items: [textItem("Du 01/01/2025 au 31/12/2025", 600), textItem("CARREFOUR HYPER.", 560)],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toHaveLength(1);
+    expect(result.pageOwners.get(1)).toBe(result.pageOwners.get(2));
+  });
+
+  it("ignore les lignes numériques entre la date et le nom", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          textItem("Du 01/01/2025 au 31/12/2025", 600),
+          textItem("123456", 580), // ligne numérique intercalée
+          textItem("ELIPHI - MR MASURE", 560),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "ELIPHI - MR MASURE", name: "ELIPHI - MR MASURE" }]);
+  });
+});
+
+describe("extractOwners — pageRotationCorrections", () => {
+  it("stocke la correction non-zéro dans pageRotationCorrections", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 90,
+    });
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+  });
+
+  it("n'enregistre pas une correction de 0° dans pageRotationCorrections", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 0,
+    });
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.size).toBe(0);
+  });
+
+  it("pageRotationCorrections est un Map vide pour une page avec texte intégré", async () => {
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("OWNER A", 480)],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections).toBeInstanceOf(Map);
+    expect(result.pageRotationCorrections.size).toBe(0);
   });
 });
