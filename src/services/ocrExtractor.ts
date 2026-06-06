@@ -1,20 +1,43 @@
 import type { PDFPageProxy } from "pdfjs-dist/types/src/display/api";
 import { createWorker, type Worker } from "tesseract.js";
+import type { Rotation } from "../types";
 
 let workerInstance: Worker | null = null;
+let workerFailed = false;
 
 async function ensureWorker(): Promise<Worker> {
-  if (!workerInstance) {
-    const base = window.location.origin + "/tessdata";
-    workerInstance = await createWorker("fra", 1, {
-      workerPath: `${base}/worker.min.js`,
-      langPath: base,
-      corePath: base,
-      gzip: false,
-      // Suppress Tesseract's per-page progress logs in the browser console
-      logger: () => {},
-    });
+  if (workerFailed) throw new Error("Tesseract worker failed to initialize");
+  if (workerInstance) return workerInstance;
+
+  const base = window.location.origin + "/tessdata";
+  // createWorker's internal `.catch(() => {})` swallows loadLanguage/initialize
+  // failures without rejecting workerRes, causing it to hang forever.
+  // The timeout unblocks us if that happens.
+  // errorHandler prevents createWorker from throwing inside its onMessage callback
+  // (which would become an unhandled error, triggering Vite's error overlay).
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Tesseract worker init timed out after 15 s")), 15_000)
+  );
+
+  try {
+    workerInstance = await Promise.race([
+      createWorker("fra", 1, {
+        workerPath: `${base}/worker.min.js`,
+        langPath: base,
+        corePath: base,
+        gzip: false,
+        logger: () => {},
+        errorHandler: (err: unknown) => {
+          console.error("[Tesseract] worker error:", err);
+        },
+      }),
+      timeout,
+    ]);
+  } catch (e) {
+    workerFailed = true;
+    throw e;
   }
+
   return workerInstance;
 }
 
@@ -25,8 +48,12 @@ async function ensureWorker(): Promise<Worker> {
  *           always appears in the top third of the page in known documents.
  * "full"  — entire page (~2-3s). Fallback when crop finds no owner.
  */
-export async function ocrPage(page: PDFPageProxy, strategy: "crop" | "full"): Promise<string> {
-  const viewport = page.getViewport({ scale: 1.5 });
+export async function ocrPage(
+  page: PDFPageProxy,
+  strategy: "crop" | "full",
+  rotation: Rotation = 0
+): Promise<string> {
+  const viewport = page.getViewport({ scale: 1.5, rotation });
   const width = Math.floor(viewport.width);
   const fullHeight = Math.floor(viewport.height);
   const height = strategy === "crop" ? Math.floor(fullHeight * 0.35) : fullHeight;
@@ -68,4 +95,27 @@ export async function ocrPage(page: PDFPageProxy, strategy: "crop" | "full"): Pr
     console.error("[ocrPage] recognize FAILED:", String(e));
     throw e;
   }
+}
+
+function countAlphanumeric(text: string): number {
+  return (text.match(/[a-zA-ZÀ-ÿ0-9]/g) ?? []).length;
+}
+
+/**
+ * Tries canvas rotations 0°→90°→180°→270° using crop OCR.
+ * Returns the first rotation yielding ≥ 15 alphanumeric chars.
+ * Falls back to full-page OCR at 0° if no crop attempt succeeds.
+ */
+export async function ocrPageWithAutoRotation(
+  page: PDFPageProxy,
+  strategy: "crop" | "full"
+): Promise<{ text: string; rotationCorrection: Rotation }> {
+  for (const rotation of [0, 90, 180, 270] as Rotation[]) {
+    const text = await ocrPage(page, "crop", rotation);
+    if (countAlphanumeric(text) >= 15) {
+      const finalText = strategy === "crop" ? text : await ocrPage(page, "full", rotation);
+      return { text: finalText, rotationCorrection: rotation };
+    }
+  }
+  return { text: await ocrPage(page, "full", 0), rotationCorrection: 0 };
 }
