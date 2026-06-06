@@ -397,10 +397,15 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
               if (!item.owners || item.owners.length === 0) {
                 // No owner detected → include all pages in every output
-                const pages = await merged.copyPages(doc, doc.getPageIndices());
-                pages.forEach((p: PDFPage) => {
-                  if (item.rotation !== 0) {
-                    p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+                const allIndices = doc.getPageIndices();
+                const pages = await merged.copyPages(doc, allIndices);
+                pages.forEach((p: PDFPage, i: number) => {
+                  const pageNum = allIndices[i] + 1;
+                  const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
+                  if (item.rotation !== 0 || correction !== 0) {
+                    p.setRotation(
+                      degrees((p.getRotation().angle + item.rotation + correction) % 360)
+                    );
                   }
                   merged.addPage(p);
                 });
@@ -416,9 +421,13 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
                 }
                 if (includedIndices.length > 0) {
                   const pages = await merged.copyPages(doc, includedIndices);
-                  pages.forEach((p: PDFPage) => {
-                    if (item.rotation !== 0) {
-                      p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+                  pages.forEach((p: PDFPage, i: number) => {
+                    const pageNum = includedIndices[i] + 1;
+                    const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
+                    if (item.rotation !== 0 || correction !== 0) {
+                      p.setRotation(
+                        degrees((p.getRotation().angle + item.rotation + correction) % 360)
+                      );
                     }
                     merged.addPage(p);
                   });
@@ -459,10 +468,13 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         for (const item of items) {
           if (item.type === "pdf") {
             const doc = await loadOrCacheDoc(item.pdfPath);
-            const pages = await merged.copyPages(doc, doc.getPageIndices());
-            pages.forEach((p: PDFPage) => {
-              if (item.rotation !== 0) {
-                p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+            const indices = doc.getPageIndices();
+            const pages = await merged.copyPages(doc, indices);
+            pages.forEach((p: PDFPage, i: number) => {
+              const pageNum = indices[i] + 1;
+              const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
+              if (item.rotation !== 0 || correction !== 0) {
+                p.setRotation(degrees((p.getRotation().angle + item.rotation + correction) % 360));
               }
               merged.addPage(p);
             });

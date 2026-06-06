@@ -376,6 +376,80 @@ describe("generate — B : limites", () => {
     // (90 + 270) % 360 = 0
     expect(page.setRotation).toHaveBeenCalledWith(0);
   });
+
+  it("pageRotationCorrections page 1 = 90° → setRotation appelé avec 90 (correction seule, item.rotation=0)", async () => {
+    const page = makePage(0);
+    const mergedDoc = makeMergedDoc();
+    mergedDoc.copyPages.mockResolvedValue([page]);
+    vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1) as any);
+    vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
+
+    const pdfItem: PdfItem = {
+      ...makePdf("a", "/a.pdf"),
+      rotation: 0,
+      pageRotationCorrections: new Map([[1, 90 as const]]),
+    };
+    useMergeStore.setState({ items: [pdfItem] });
+    await useMergeStore.getState().generate();
+
+    // (page.angle 0 + item.rotation 0 + correction 90) % 360 = 90
+    expect(page.setRotation).toHaveBeenCalledWith(90);
+  });
+
+  it("pageRotationCorrections page 1 = 90° + item.rotation = 90° → setRotation appelé avec 180", async () => {
+    const page = makePage(0);
+    const mergedDoc = makeMergedDoc();
+    mergedDoc.copyPages.mockResolvedValue([page]);
+    vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1) as any);
+    vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
+
+    const pdfItem: PdfItem = {
+      ...makePdf("a", "/a.pdf"),
+      rotation: 90 as const,
+      pageRotationCorrections: new Map([[1, 90 as const]]),
+    };
+    useMergeStore.setState({ items: [pdfItem] });
+    await useMergeStore.getState().generate();
+
+    // (0 + 90 + 90) % 360 = 180
+    expect(page.setRotation).toHaveBeenCalledWith(180);
+  });
+
+  it("pageRotationCorrections absent → setRotation pas appelé si item.rotation=0", async () => {
+    const page = makePage(0);
+    const mergedDoc = makeMergedDoc();
+    mergedDoc.copyPages.mockResolvedValue([page]);
+    vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1) as any);
+    vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
+
+    useMergeStore.setState({ items: [{ ...makePdf("a"), rotation: 0 }] });
+    await useMergeStore.getState().generate();
+
+    expect(page.setRotation).not.toHaveBeenCalled();
+  });
+
+  it("correction sur page 2 seulement (PDF 2 pages) → setRotation appelé une seule fois pour page 2", async () => {
+    const [p1, p2] = [makePage(0), makePage(0)];
+    const mergedDoc = makeMergedDoc();
+    mergedDoc.copyPages.mockResolvedValue([p1, p2]);
+    vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(2) as any);
+    vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
+
+    const pdfItem: PdfItem = {
+      ...makePdf("a", "/a.pdf"),
+      rotation: 0,
+      pageRotationCorrections: new Map([[2, 270 as const]]), // only page 2 needs correction
+    };
+    useMergeStore.setState({ items: [pdfItem] });
+    await useMergeStore.getState().generate();
+
+    expect(p1.setRotation).not.toHaveBeenCalled();
+    expect(p2.setRotation).toHaveBeenCalledWith(270);
+  });
 });
 
 // ── I — Interface : contrat entrée/sortie ─────────────────────────────────────
