@@ -502,7 +502,10 @@ describe("extractOwners — format 'Edition par Coproprietaire' (sous-titre apr�
   });
 
   it("fonctionne via OCR quand la page est scannée (pas de texte)", async () => {
-    vi.mocked(ocrPage).mockResolvedValueOnce("Du 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.");
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Du 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.",
+      rotationCorrection: 0,
+    });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
     expect(result.owners).toEqual([{ code: "CARREFOUR HYPER.", name: "CARREFOUR HYPER." }]);

@@ -13,7 +13,7 @@ export interface ExtractionResult {
   owners: OwnerInfo[];
   /** 1-based page number → owner. Pages absent from the map are orphans (included in all outputs). */
   pageOwners: Map<number, OwnerInfo>;
-  /** 1-based page → rotation correction (degrees CCW). Only non-zero entries stored. */
+  /** 1-based page → rotation correction (degrees). Only non-zero entries stored. */
   pageRotationCorrections: Map<number, Rotation>;
 }
 
