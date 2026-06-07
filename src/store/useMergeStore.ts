@@ -96,6 +96,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
     try {
       const mergedPdf = await Bridge.convertPptx(path);
+      set({ status: "extracting", statusMessage: strings.status.extracting });
       const count = await Bridge.getPdfPageCount(mergedPdf);
 
       const slideItems: SlideItem[] = Array.from({ length: count }, (_, i) => ({
