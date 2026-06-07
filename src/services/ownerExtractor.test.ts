@@ -724,3 +724,87 @@ describe("extractOwners — rotation detection from text transforms", () => {
     expect(result.pageRotationCorrections.get(2)).toBe(90);
   });
 });
+
+describe("extractOwners — rotated embedded text falls back to OCR", () => {
+  it("uses OCR when hasText=true but text is 90°CW-rotated and parseOwner fails", async () => {
+    // Both items share y=500 → buildLines() merges them into one line → matchOwner fails.
+    // transform[0]=0, transform[1]=-12 → atan2(-12,0) = -90° → bucketed to 270° →
+    // correction = (360-270)%360 = 90 (90° CW rotation detected).
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 90,
+    });
+
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          // 3 items needed: detectTextRotation requires ≥3 to determine dominant angle reliably
+          { str: "Copropriétaire 0000001", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "S.A.S. IMMO. CARREFOUR", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "Exercice 2025", transform: [0, -12, 0, 0, 100, 500] },
+        ],
+      },
+    ]);
+
+    const result = await extractOwners("/doc.pdf");
+
+    expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
+    expect(result.pageOwners.get(1)).toEqual({ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" });
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
+    expect(ocrPage).not.toHaveBeenCalled();
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+  });
+
+  it("escalates to ocrPage('full') when crop OCR also fails on rotated page", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "texte sans propriétaire",
+      rotationCorrection: 90,
+    });
+    vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
+
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          { str: "Copropriétaire 0000042", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "SARL DUPONT IMMOBILIER", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "Autre texte", transform: [0, -12, 0, 0, 100, 500] },
+          { str: "Encore du texte", transform: [0, -12, 0, 0, 50, 500] },
+        ],
+      },
+    ]);
+
+    const result = await extractOwners("/doc.pdf");
+
+    expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
+    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "full", 90);
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+  });
+
+  it("does NOT call OCR when hasText=true but parseOwner already succeeds", async () => {
+    // Normally-oriented items at distinct y values → buildLines separates them → parseOwner wins.
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [
+          { str: "Copropriétaire 0000001", transform: [12, 0, 0, 12, 200, 500] },
+          { str: "S.A.S. IMMO. CARREFOUR", transform: [12, 0, 0, 12, 150, 480] },
+          { str: "Autre texte A", transform: [12, 0, 0, 12, 150, 460] },
+          { str: "Autre texte B", transform: [12, 0, 0, 12, 150, 440] },
+          { str: "Autre texte C", transform: [12, 0, 0, 12, 150, 420] },
+        ],
+      },
+    ]);
+
+    const result = await extractOwners("/doc.pdf");
+
+    expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
+    expect(ocrPageWithAutoRotation).not.toHaveBeenCalled();
+    expect(ocrPage).not.toHaveBeenCalled();
+  });
+});
