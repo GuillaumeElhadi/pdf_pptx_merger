@@ -22,6 +22,14 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
     id: item.id,
   });
 
+  // Combine user-applied rotation with auto-detected page correction for display.
+  // The correction is applied as CSS rotation (not pdfjs viewport rotation) because
+  // pdfjs viewport rotation stacks on top of text item transforms in the content
+  // stream, causing double-rotation for text-based pages. CSS rotation is correct
+  // for all page types.
+  const pageCorrection = (item.pageRotationCorrections?.get(1) ?? 0) as Rotation;
+  const displayRotation = ((item.rotation + pageCorrection) % 360) as Rotation;
+
   const rowStyle: React.CSSProperties = {
     ...styles.row,
     ...(selected ? styles.rowSelected : {}),
@@ -44,13 +52,13 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
       {isGroupFollower && <div style={styles.followerBar} />}
       <span style={styles.handle}>⠿</span>
       <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ transform: `rotate(${item.rotation}deg)`, transition: "transform 0.2s" }}>
+        <div style={{ transform: `rotate(${displayRotation}deg)`, transition: "transform 0.2s" }}>
           <ZoomThumb
             pdfPath={item.pdfPath}
             pageIndex={0}
             alt={basename(item.pdfPath)}
-            rotation={item.rotation}
-            rotationCorrection={(item.pageRotationCorrections?.get(1) ?? 0) as Rotation}
+            rotation={displayRotation}
+            rotationCorrection={0}
           />
         </div>
         {item.rotation !== 0 && <span style={styles.rotationBadge}>{item.rotation}°</span>}
