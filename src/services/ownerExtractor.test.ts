@@ -568,7 +568,7 @@ describe("extractOwners — pageRotationCorrections", () => {
     expect(result.pageRotationCorrections.size).toBe(0);
   });
 
-  it("pageRotationCorrections est un Map vide pour une page avec texte intégré", async () => {
+  it("pageRotationCorrections est vide pour une page avec texte normalement orienté", async () => {
     mockDocument([
       {
         width: 842,
@@ -579,5 +579,148 @@ describe("extractOwners — pageRotationCorrections", () => {
     const result = await extractOwners("/doc.pdf");
     expect(result.pageRotationCorrections).toBeInstanceOf(Map);
     expect(result.pageRotationCorrections.size).toBe(0);
+  });
+});
+
+// ── detectTextRotation — via extractOwners text path ──────────────────────────
+
+/** Text item whose content direction is rotated by `angleDeg` degrees. */
+function rotatedItem(str: string, y: number, angleDeg: number) {
+  const rad = (angleDeg * Math.PI) / 180;
+  const fs = 12;
+  return { str, transform: [Math.cos(rad) * fs, Math.sin(rad) * fs, 0, 0, 0, y] };
+}
+
+describe("extractOwners — rotation detection from text transforms", () => {
+  it("stores correction=90 when text items are 90° CW (transform angle −90°)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Tableau des charges", 700, 270),
+          rotatedItem("Exercice 2025", 680, 270),
+          rotatedItem("Copropriétaire 0000001", 660, 270),
+          rotatedItem("OWNER A", 640, 270),
+          rotatedItem("Montant total", 620, 270),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+  });
+
+  it("stores correction=270 when text items are 90° CCW (transform angle +90°)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Texte A", 700, 90),
+          rotatedItem("Texte B", 680, 90),
+          rotatedItem("Texte C", 660, 90),
+          rotatedItem("Texte D", 640, 90),
+          rotatedItem("Texte E", 620, 90),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.get(1)).toBe(270);
+  });
+
+  it("stores correction=180 when text items are upside down (transform angle 180°)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Ligne A", 700, 180),
+          rotatedItem("Ligne B", 680, 180),
+          rotatedItem("Ligne C", 660, 180),
+          rotatedItem("Ligne D", 640, 180),
+          rotatedItem("Ligne E", 620, 180),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.get(1)).toBe(180);
+  });
+
+  it("stores no correction for normally-oriented text (transform angle 0°)", async () => {
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [
+          textItem("Copropriétaire 0000001", 500),
+          textItem("OWNER A", 480),
+          textItem("Charges communes", 460),
+          textItem("Montant total", 440),
+          textItem("Exercice 2025", 420),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+  });
+
+  it("stores no correction when fewer than 3 non-empty items (unreliable)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [rotatedItem("Texte A", 700, 270), rotatedItem("Texte B", 680, 270)],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+  });
+
+  it("stores no correction when no single orientation reaches 50% of items", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          textItem("Normal A", 700),
+          textItem("Normal B", 680),
+          rotatedItem("CW A", 660, 270),
+          rotatedItem("CW B", 640, 270),
+          rotatedItem("CCW A", 620, 90),
+          rotatedItem("CCW B", 600, 90),
+        ],
+      },
+    ]);
+    // Each angle: 2/6 = 33% — none reaches 50%
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+  });
+
+  it("applies correction to page 2 independently of page 1", async () => {
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [
+          textItem("Page 1 normal A", 500),
+          textItem("Page 1 normal B", 480),
+          textItem("Page 1 normal C", 460),
+        ],
+      },
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Page 2 CW A", 700, 270),
+          rotatedItem("Page 2 CW B", 680, 270),
+          rotatedItem("Page 2 CW C", 660, 270),
+          rotatedItem("Page 2 CW D", 640, 270),
+          rotatedItem("Page 2 CW E", 620, 270),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+    expect(result.pageRotationCorrections.get(2)).toBe(90);
   });
 });
