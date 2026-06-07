@@ -15,7 +15,7 @@ export function TopBar() {
 
   const isConverting = status === "converting";
   const isMerging = status === "merging";
-  const busy = isConverting || isMerging;
+  const busy = isConverting || isMerging || status === "extracting";
   const hasPdf = items.some((i) => i.type === "pdf");
 
   return (

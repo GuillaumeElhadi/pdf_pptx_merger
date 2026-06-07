@@ -43,6 +43,7 @@ export const strings = {
   status: {
     ready: "Prêt.",
     converting: "Conversion du PowerPoint en cours…",
+    extracting: "Extraction des diapositives…",
     pptxLoaded: (count: number) =>
       `PowerPoint chargé — ${count} diapositive${count !== 1 ? "s" : ""} disponible${count !== 1 ? "s" : ""}.`,
     pdfsAdded: (count: number) =>

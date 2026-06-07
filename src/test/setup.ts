@@ -26,6 +26,34 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn().mockResolvedValue("3.8.0"),
 }));
 
+// Node 26+ defines localStorage as a native getter returning undefined (requires
+// --localstorage-file flag). Override it with an in-memory implementation so
+// tests that use bare `localStorage` work with the jsdom environment.
+if (typeof localStorage === "undefined") {
+  const store = new Map<string, string>();
+  const localStorageMock: Storage = {
+    get length() {
+      return store.size;
+    },
+    key: (i) => [...store.keys()][i] ?? null,
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => {
+      store.set(key, String(value));
+    },
+    removeItem: (key) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    value: localStorageMock,
+    writable: true,
+    configurable: true,
+  });
+}
+
 afterEach(() => {
   vi.clearAllMocks();
 });

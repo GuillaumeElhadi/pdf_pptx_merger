@@ -32,4 +32,4 @@ export interface SlideItem {
 
 export type MergeItem = PdfItem | SlideItem;
 
-export type AppStatus = "idle" | "converting" | "merging" | "error";
+export type AppStatus = "idle" | "converting" | "extracting" | "merging" | "error";
