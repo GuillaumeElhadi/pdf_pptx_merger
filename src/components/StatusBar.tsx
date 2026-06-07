@@ -14,7 +14,7 @@ export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
   const msgColor =
     status === "error"
       ? "var(--error)"
-      : status === "converting" || status === "merging"
+      : status === "converting" || status === "merging" || status === "extracting"
         ? "#f0a020"
         : "var(--text-muted)";
 
@@ -33,7 +33,7 @@ export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
         </div>
       )}
       <div style={styles.bar}>
-        {(status === "converting" || status === "merging") && (
+        {(status === "converting" || status === "merging" || status === "extracting") && (
           <span style={styles.spinner}>⏳</span>
         )}
         <span style={{ ...styles.msg, color: msgColor }}>{statusMessage}</span>

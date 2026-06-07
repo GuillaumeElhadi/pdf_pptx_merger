@@ -240,3 +240,31 @@ describe("renderPage — E : exceptions", () => {
     await expect(renderPage(freshPath(), 99, 160)).rejects.toThrow("Page inexistante");
   });
 });
+
+describe("renderPage — rotationCorrection", () => {
+  it("transmet rotationCorrection=90 au viewport pdfjs", async () => {
+    const page = makePdfPage();
+    setupPdfjs(page);
+    await renderPage(freshPath(), 0, 160, 90);
+    expect(page.getViewport).toHaveBeenCalledWith(expect.objectContaining({ rotation: 90 }));
+  });
+
+  it("deux appels même chemin/page mais rotationCorrection différente → deux renders distincts (cache isolé)", async () => {
+    const path = freshPath();
+    setupPdfjs(makePdfPage());
+    await renderPage(path, 0, 160, 0);
+    // Second call: same path + pageIndex but different rotation → must miss cache
+    setupPdfjs(makePdfPage());
+    await renderPage(path, 0, 160, 90);
+    expect(pdfjsLib.getDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it("même chemin/page/rotation → le cache retourne la même URL sans re-render", async () => {
+    const path = freshPath();
+    setupPdfjs(makePdfPage());
+    const url1 = await renderPage(path, 0, 160, 180);
+    const url2 = await renderPage(path, 0, 160, 180);
+    expect(pdfjsLib.getDocument).toHaveBeenCalledTimes(1); // cached on second call
+    expect(url1).toBe(url2);
+  });
+});

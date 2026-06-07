@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { renderPage } from "../services/pdfRenderer";
+import type { Rotation } from "../types";
 
 interface ThumbnailState {
   url: string | null;
@@ -13,7 +14,8 @@ interface ThumbnailState {
 export function useThumbnail(
   pdfPath: string | null,
   pageIndex: number = 0,
-  width: number = 160
+  width: number = 160,
+  rotationCorrection: Rotation = 0
 ): ThumbnailState {
   const [state, setState] = useState<ThumbnailState>({
     url: null,
@@ -29,7 +31,7 @@ export function useThumbnail(
     let cancelled = false;
     setState({ url: null, loading: true });
 
-    renderPage(pdfPath, pageIndex, width)
+    renderPage(pdfPath, pageIndex, width, rotationCorrection)
       .then((url) => {
         if (!cancelled) setState({ url, loading: false });
       })
@@ -40,7 +42,7 @@ export function useThumbnail(
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, pageIndex, width]);
+  }, [pdfPath, pageIndex, width, rotationCorrection]);
 
   return state;
 }

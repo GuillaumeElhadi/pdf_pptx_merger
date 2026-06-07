@@ -78,13 +78,13 @@ describe("useThumbnail — B : limites", () => {
   it("renderPage appelé avec (pdfPath, pageIndex, width) exacts", async () => {
     const { result } = renderHook(() => useThumbnail("/docs/file.pdf", 3, 48));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(renderPage).toHaveBeenCalledWith("/docs/file.pdf", 3, 48);
+    expect(renderPage).toHaveBeenCalledWith("/docs/file.pdf", 3, 48, 0);
   });
 
   it("pageIndex par défaut = 0", async () => {
     const { result } = renderHook(() => useThumbnail("/a.pdf"));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(renderPage).toHaveBeenCalledWith("/a.pdf", 0, 160);
+    expect(renderPage).toHaveBeenCalledWith("/a.pdf", 0, 160, 0);
   });
 
   it("changement de pdfPath déclenche un nouveau rendu avec le nouveau chemin", async () => {
@@ -101,7 +101,7 @@ describe("useThumbnail — B : limites", () => {
 
     await waitFor(() => expect(result.current.url).toBe("blob:url-b"));
     expect(renderPage).toHaveBeenCalledTimes(2);
-    expect(renderPage).toHaveBeenNthCalledWith(2, "/b.pdf", 0, 160);
+    expect(renderPage).toHaveBeenNthCalledWith(2, "/b.pdf", 0, 160, 0);
   });
 
   it("changement de pageIndex déclenche un nouveau rendu", async () => {
@@ -191,7 +191,7 @@ describe("useThumbnail — S : scénarios", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.url).toBe("blob:thumbnail.png");
-    expect(renderPage).toHaveBeenCalledWith("/slides.pdf", 2, 160);
+    expect(renderPage).toHaveBeenCalledWith("/slides.pdf", 2, 160, 0);
   });
 
   it("S2 — navigation entre slides : chaque changement de pageIndex déclenche un rendu", async () => {

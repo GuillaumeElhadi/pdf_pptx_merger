@@ -1,22 +1,27 @@
 import * as pdfjsLib from "pdfjs-dist";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import type { Rotation } from "../types";
 
-// Module-level cache: cacheKey = `${filePath}#${pageIndex}` → PNG object URL.
+// Module-level cache: cacheKey = `${filePath}#${pageIndex}#${rotationCorrection}` → PNG object URL.
 // Entries persist for the lifetime of the app — pages are never re-rendered.
 const renderedPageCache = new Map<string, string>();
 
 /**
  * Renders a single page of a local PDF file as a PNG object URL.
  *
- * The rendered bitmap is cached by `filePath + pageIndex` — repeated calls
+ * The rendered bitmap is cached by `filePath + pageIndex + rotationCorrection` — repeated calls
  * with the same arguments return the existing URL without re-rendering.
+ *
+ * `rotationCorrection` is additive on top of the page's own `/Rotate` attribute.
+ * When 0 (the default), behaviour is identical to not passing the parameter.
  */
 export async function renderPage(
   filePath: string,
   pageIndex: number = 0,
-  width: number = 160
+  width: number = 160,
+  rotationCorrection: Rotation = 0
 ): Promise<string> {
-  const cacheKey = `${filePath}#${pageIndex}`;
+  const cacheKey = `${filePath}#${pageIndex}#${rotationCorrection}`;
   const cached = renderedPageCache.get(cacheKey);
   if (cached) return cached;
 
@@ -28,9 +33,9 @@ export async function renderPage(
   try {
     const page = await pdf.getPage(pageIndex + 1); // pdfjs is 1-based
 
-    const viewport = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: 1, rotation: rotationCorrection });
     const scale = width / viewport.width;
-    const scaled = page.getViewport({ scale });
+    const scaled = page.getViewport({ scale, rotation: rotationCorrection });
 
     const canvas = new OffscreenCanvas(Math.floor(scaled.width), Math.floor(scaled.height));
     const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;

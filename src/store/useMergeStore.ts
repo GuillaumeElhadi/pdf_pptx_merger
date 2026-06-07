@@ -147,23 +147,66 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
     set((s) => ({
       items: [...s.items, ...newItems],
-      statusMessage: strings.status.pdfsAdded(newItems.length),
+      status: "extracting" as const,
+      statusMessage: strings.status.extractingOwners(0, newItems.length),
+      progress: 0,
     }));
 
-    // Enrich each new PDF with owner info in the background (non-blocking)
-    newItems.forEach(async (item) => {
-      try {
-        const { owners, pageOwners } = await extractOwners(item.pdfPath);
-        set((s) => ({
-          items: s.items.map((i) => (i.id === item.id ? { ...i, owners, pageOwners } : i)),
-        }));
-      } catch (e) {
-        logger.warn("addPdfs:extractOwners", `id=${item.id} — ${String(e)}`);
-        set((s) => ({
-          items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
-        }));
+    let done = 0;
+    let failedCount = 0;
+    const allFoundOwners = new Map<string, OwnerInfo>();
+    try {
+      for (const item of newItems) {
+        const filename = item.pdfPath.split(/[\\/]/).pop() ?? item.pdfPath;
+        logger.info("addPdfs:extractOwners", `start ${done + 1}/${newItems.length} — ${filename}`);
+        try {
+          const { owners, pageOwners, pageRotationCorrections } = await extractOwners(item.pdfPath);
+          done++;
+          for (const o of owners) {
+            if (!allFoundOwners.has(o.code)) allFoundOwners.set(o.code, o);
+          }
+          logger.info(
+            "addPdfs:extractOwners",
+            `done  ${done}/${newItems.length} — ${filename} (${owners.length} owner${owners.length !== 1 ? "s" : ""})`
+          );
+          set((s) => ({
+            items: s.items.map((i) =>
+              i.id === item.id ? { ...i, owners, pageOwners, pageRotationCorrections } : i
+            ),
+            progress: done / newItems.length,
+            statusMessage: strings.status.extractingOwners(done, newItems.length),
+          }));
+        } catch (e) {
+          done++;
+          failedCount++;
+          logger.warn(
+            "addPdfs:extractOwners",
+            `fail  ${done}/${newItems.length} — ${filename} — ${String(e)}`
+          );
+          set((s) => ({
+            items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
+            progress: done / newItems.length,
+            statusMessage: strings.status.extractingOwners(done, newItems.length),
+          }));
+        }
       }
-    });
+    } finally {
+      const ownerNames = Array.from(allFoundOwners.values())
+        .map((o) => `${o.name} (${o.code})`)
+        .join(", ");
+      logger.info(
+        "addPdfs:extractOwners",
+        `complete — ${newItems.length} PDF${newItems.length !== 1 ? "s" : ""}, ${allFoundOwners.size} propriétaire${allFoundOwners.size !== 1 ? "s" : ""} distinct${allFoundOwners.size !== 1 ? "s" : ""}${failedCount ? ` (${failedCount} en échec)` : ""}${ownerNames ? ` : ${ownerNames}` : ""}`
+      );
+      set({
+        status: "idle",
+        progress: null,
+        statusMessage:
+          allFoundOwners.size > 0
+            ? strings.status.pdfsAddedWithOwners(newItems.length, allFoundOwners.size)
+            : strings.status.pdfsAdded(newItems.length),
+      });
+    }
   },
 
   // ── removeItem ────────────────────────────────────────────────────────────
@@ -261,6 +304,14 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     }
     const isMultiOwner = allOwners.size > 1;
 
+    if (isMultiOwner) {
+      const ownerNames = Array.from(allOwners.values())
+        .map((o) => o.name)
+        .join(", ");
+      const proceed = confirm(strings.confirm.multiOwnerSplit(allOwners.size, ownerNames));
+      if (!proceed) return;
+    }
+
     // Use separate last-path memory for file vs directory modes
     const previousPath = isMultiOwner ? lastOutputDir : lastOutputPath;
 
@@ -346,10 +397,15 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
               if (!item.owners || item.owners.length === 0) {
                 // No owner detected → include all pages in every output
-                const pages = await merged.copyPages(doc, doc.getPageIndices());
-                pages.forEach((p: PDFPage) => {
-                  if (item.rotation !== 0) {
-                    p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+                const allIndices = doc.getPageIndices();
+                const pages = await merged.copyPages(doc, allIndices);
+                pages.forEach((p: PDFPage, i: number) => {
+                  const pageNum = allIndices[i] + 1;
+                  const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
+                  if (item.rotation !== 0 || correction !== 0) {
+                    p.setRotation(
+                      degrees((p.getRotation().angle + item.rotation + correction) % 360)
+                    );
                   }
                   merged.addPage(p);
                 });
@@ -365,9 +421,13 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
                 }
                 if (includedIndices.length > 0) {
                   const pages = await merged.copyPages(doc, includedIndices);
-                  pages.forEach((p: PDFPage) => {
-                    if (item.rotation !== 0) {
-                      p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+                  pages.forEach((p: PDFPage, i: number) => {
+                    const pageNum = includedIndices[i] + 1;
+                    const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
+                    if (item.rotation !== 0 || correction !== 0) {
+                      p.setRotation(
+                        degrees((p.getRotation().angle + item.rotation + correction) % 360)
+                      );
                     }
                     merged.addPage(p);
                   });
@@ -408,10 +468,13 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
         for (const item of items) {
           if (item.type === "pdf") {
             const doc = await loadOrCacheDoc(item.pdfPath);
-            const pages = await merged.copyPages(doc, doc.getPageIndices());
-            pages.forEach((p: PDFPage) => {
-              if (item.rotation !== 0) {
-                p.setRotation(degrees((p.getRotation().angle + item.rotation) % 360));
+            const indices = doc.getPageIndices();
+            const pages = await merged.copyPages(doc, indices);
+            pages.forEach((p: PDFPage, i: number) => {
+              const pageNum = indices[i] + 1;
+              const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
+              if (item.rotation !== 0 || correction !== 0) {
+                p.setRotation(degrees((p.getRotation().angle + item.rotation + correction) % 360));
               }
               merged.addPage(p);
             });
