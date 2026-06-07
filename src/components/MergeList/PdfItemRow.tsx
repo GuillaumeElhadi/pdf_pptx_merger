@@ -23,12 +23,12 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
   });
 
   // Combine user-applied rotation with auto-detected page correction for display.
-  // The correction is applied as CSS rotation (not pdfjs viewport rotation) because
-  // pdfjs viewport rotation stacks on top of text item transforms in the content
-  // stream, causing double-rotation for text-based pages. CSS rotation is correct
-  // for all page types.
+  // pdfjs corrections use CCW-positive convention (designed for getViewport rotation).
+  // CSS rotate() uses CW-positive convention. Invert the page correction before
+  // adding it so the visual direction is correct.
   const pageCorrection = (item.pageRotationCorrections?.get(1) ?? 0) as Rotation;
-  const displayRotation = ((item.rotation + pageCorrection) % 360) as Rotation;
+  const pageCorrectionCss = ((360 - pageCorrection) % 360) as Rotation;
+  const displayRotation = ((item.rotation + pageCorrectionCss) % 360) as Rotation;
 
   const rowStyle: React.CSSProperties = {
     ...styles.row,
