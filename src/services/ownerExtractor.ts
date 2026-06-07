@@ -154,7 +154,7 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
       if (hasText) {
         owner = parseOwner(buildLines(content.items));
       } else {
-        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(page, "crop");
+        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(page);
         owner = matchOwner(
           cropText
             .split("\n")

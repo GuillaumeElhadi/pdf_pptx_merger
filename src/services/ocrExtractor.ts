@@ -105,16 +105,15 @@ function countAlphanumeric(text: string): number {
  * Tries canvas rotations 0°→90°→180°→270° using crop OCR.
  * Returns the first rotation yielding ≥ 15 alphanumeric chars.
  * Falls back to full-page OCR at 0° if no crop attempt succeeds.
+ * Callers are responsible for any additional full-page fallback at the detected rotation.
  */
 export async function ocrPageWithAutoRotation(
-  page: PDFPageProxy,
-  strategy: "crop" | "full"
+  page: PDFPageProxy
 ): Promise<{ text: string; rotationCorrection: Rotation }> {
   for (const rotation of [0, 90, 180, 270] as Rotation[]) {
     const text = await ocrPage(page, "crop", rotation);
     if (countAlphanumeric(text) >= 15) {
-      const finalText = strategy === "crop" ? text : await ocrPage(page, "full", rotation);
-      return { text: finalText, rotationCorrection: rotation };
+      return { text, rotationCorrection: rotation };
     }
   }
   return { text: await ocrPage(page, "full", 0), rotationCorrection: 0 };

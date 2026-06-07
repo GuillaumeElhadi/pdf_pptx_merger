@@ -53,7 +53,7 @@ describe("ocrPageWithAutoRotation — sélection de rotation", () => {
       data: { text: "Bonjour monde test programme abc" }, // 28 alphanum chars
     });
     const page = makePage();
-    const result = await ocrPageWithAutoRotation(page, "crop");
+    const result = await ocrPageWithAutoRotation(page);
     expect(result.rotationCorrection).toBe(0);
     expect(result.text).toBe("Bonjour monde test programme abc");
     // Only one getViewport call: rotation=0 succeeded on first try
@@ -65,7 +65,7 @@ describe("ocrPageWithAutoRotation — sélection de rotation", () => {
       .mockResolvedValueOnce({ data: { text: "" } }) // rotation=0 crop: no text
       .mockResolvedValueOnce({ data: { text: "Texte lisible en français programme" } }); // rotation=90 crop: good
     const page = makePage();
-    const result = await ocrPageWithAutoRotation(page, "crop");
+    const result = await ocrPageWithAutoRotation(page);
     expect(result.rotationCorrection).toBe(90);
     expect(result.text).toBe("Texte lisible en français programme");
   });
@@ -79,7 +79,7 @@ describe("ocrPageWithAutoRotation — sélection de rotation", () => {
       .mockResolvedValueOnce({ data: { text: "" } }) // 270° crop
       .mockResolvedValueOnce({ data: { text: "Texte complet trouvé en pleine page" } }); // full at 0°
     const page = makePage();
-    const result = await ocrPageWithAutoRotation(page, "crop");
+    const result = await ocrPageWithAutoRotation(page);
     expect(result.rotationCorrection).toBe(0);
     expect(mockRecognize).toHaveBeenCalledTimes(5);
   });

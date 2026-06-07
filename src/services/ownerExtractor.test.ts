@@ -409,14 +409,14 @@ describe("extractOwners — carry-forward : pages sans label héritent du dernie
 });
 
 describe("extractOwners — fallback OCR (page sans texte)", () => {
-  it("appelle ocrPageWithAutoRotation('crop') quand une page n'a aucun item texte", async () => {
+  it("appelle ocrPageWithAutoRotation quand une page n'a aucun item texte", async () => {
     vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
       text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
       rotationCorrection: 0,
     });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), "crop");
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything());
     expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
   });
 
@@ -439,7 +439,7 @@ describe("extractOwners — fallback OCR (page sans texte)", () => {
     vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPageWithAutoRotation).toHaveBeenNthCalledWith(1, expect.anything(), "crop");
+    expect(ocrPageWithAutoRotation).toHaveBeenNthCalledWith(1, expect.anything());
     expect(ocrPage).toHaveBeenNthCalledWith(1, expect.anything(), "full", 90);
     expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
   });

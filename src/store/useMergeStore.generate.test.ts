@@ -864,6 +864,36 @@ describe("generate — multi-owner : split par propriétaire", () => {
     expect(Bridge.pickSaveDirectory).not.toHaveBeenCalled();
     expect(useMergeStore.getState().status).toBe("idle");
   });
+
+  it("pageRotationCorrections s'applique sur le chemin multi-owner (includedIndices)", async () => {
+    const ownerX = { code: "X", name: "Owner X" };
+    const pageOwnersMap = new Map([
+      [1, ownerX],
+      [2, ownerX],
+    ]);
+    const [p1, p2] = [makePage(0), makePage(0)];
+
+    const mergedDoc = makeMergedDoc();
+    mergedDoc.copyPages.mockResolvedValue([p1, p2]);
+    vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(2) as any);
+    vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const pdfItem: PdfItem = {
+      ...makePdf("a", "/a.pdf"),
+      owners: [ownerX],
+      pageOwners: pageOwnersMap,
+      pageRotationCorrections: new Map([[2, 90 as const]]), // only page 2 needs correction
+    };
+    useMergeStore.setState({ items: [pdfItem] });
+    await useMergeStore.getState().generate();
+
+    // page 1: no correction, no item.rotation → setRotation not called
+    expect(p1.setRotation).not.toHaveBeenCalled();
+    // page 2: correction 90° → setRotation(90)
+    expect(p2.setRotation).toHaveBeenCalledWith(90);
+  });
 });
 
 // ── S — Scenarios : scénarios utilisateur complets ────────────────────────────
