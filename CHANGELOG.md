@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.3](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.2...v3.12.3) (2026-06-07)
+
+
+### Bug Fixes
+
+* detect owners in mixed-orientation PDFs, add multi-owner confirmation dialog ([#43](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/43)) ([c48983a](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/c48983a2cf9a48cd6a8a5d59d308d7b65bca37bf))
+
 ## [3.12.2](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.1...v3.12.2) (2026-06-02)
 
 

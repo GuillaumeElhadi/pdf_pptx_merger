@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { PdfItem } from "../../types";
+import { PdfItem, Rotation } from "../../types";
 import { useMergeStore } from "../../store/useMergeStore";
 import { basename } from "../../utils/path";
 import { ZoomThumb } from "./ZoomThumb";
@@ -50,6 +50,7 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
             pageIndex={0}
             alt={basename(item.pdfPath)}
             rotation={item.rotation}
+            rotationCorrection={(item.pageRotationCorrections?.get(1) ?? 0) as Rotation}
           />
         </div>
         {item.rotation !== 0 && <span style={styles.rotationBadge}>{item.rotation}°</span>}

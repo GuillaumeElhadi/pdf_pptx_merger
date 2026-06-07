@@ -20,6 +20,8 @@ export interface PdfItem {
   ownersError?: string;
   /** 1-based page → owner. Pages absent from the map are orphans included in all split outputs. */
   pageOwners?: Map<number, OwnerInfo>;
+  /** 1-based page → rotation correction (degrees). Only pages needing non-zero correction. */
+  pageRotationCorrections?: Map<number, Rotation>;
 }
 
 export interface SlideItem {
@@ -32,4 +34,4 @@ export interface SlideItem {
 
 export type MergeItem = PdfItem | SlideItem;
 
-export type AppStatus = "idle" | "converting" | "extracting" | "merging" | "error";
+export type AppStatus = "idle" | "converting" | "merging" | "extracting" | "error";

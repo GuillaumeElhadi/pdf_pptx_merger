@@ -14,11 +14,18 @@ interface Props {
   pageIndex: number;
   alt: string;
   rotation?: Rotation;
+  rotationCorrection?: Rotation;
 }
 
-export function ZoomThumb({ pdfPath, pageIndex, alt, rotation = 0 }: Props) {
+export function ZoomThumb({
+  pdfPath,
+  pageIndex,
+  alt,
+  rotation = 0,
+  rotationCorrection = 0,
+}: Props) {
   // Render at 600px so 480px zoom is always sharp (downscaled)
-  const { url } = useThumbnail(pdfPath, pageIndex, 600);
+  const { url } = useThumbnail(pdfPath, pageIndex, 600, rotationCorrection);
   const isDragging = useDragActive();
   const thumbRef = useRef<HTMLDivElement>(null);
   const [zoomPos, setZoomPos] = useState<{ top: number; left: number } | null>(null);
