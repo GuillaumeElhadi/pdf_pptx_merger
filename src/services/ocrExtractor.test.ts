@@ -45,6 +45,24 @@ describe("ocrPage — rotation parameter", () => {
   });
 });
 
+describe("ocrPage — rectangle crop", () => {
+  it("passe un rectangle à Tesseract en sautant le tiers gauche en mode crop", async () => {
+    // makePage returns viewport width=300, height=450 at scale=1.5
+    // crop height = floor(450 * 0.35) = 157; leftSkip = floor(300 * 0.33) = 99
+    const page = makePage();
+    await ocrPage(page, "crop");
+    const [, options] = mockRecognize.mock.calls[0];
+    expect(options).toEqual({ rectangle: { left: 99, top: 0, width: 201, height: 157 } });
+  });
+
+  it("ne passe pas de rectangle à Tesseract en mode full", async () => {
+    const page = makePage();
+    await ocrPage(page, "full");
+    const [, options] = mockRecognize.mock.calls[0];
+    expect(options).toBeUndefined();
+  });
+});
+
 // ── ocrPageWithAutoRotation ───────────────────────────────────────────────────
 
 describe("ocrPageWithAutoRotation — sélection de rotation", () => {
@@ -71,7 +89,7 @@ describe("ocrPageWithAutoRotation — sélection de rotation", () => {
   });
 
   it("tente full OCR à 0° si aucune rotation de crop ne donne de texte", async () => {
-    // 4 crop attempts + 1 full attempt
+    // 4 crop attempts + 1 full attempt; all empty → bestRotation stays 0
     mockRecognize
       .mockResolvedValueOnce({ data: { text: "" } }) // 0° crop
       .mockResolvedValueOnce({ data: { text: "" } }) // 90° crop
@@ -81,6 +99,39 @@ describe("ocrPageWithAutoRotation — sélection de rotation", () => {
     const page = makePage();
     const result = await ocrPageWithAutoRotation(page);
     expect(result.rotationCorrection).toBe(0);
+    expect(mockRecognize).toHaveBeenCalledTimes(5);
+  });
+});
+
+describe("ocrPageWithAutoRotation — validate callback", () => {
+  it("utilise validate au lieu du seuil alphanumérique quand fourni", async () => {
+    // rotation=0: ≥15 alphanum mais validate échoue (pas de Copropriétaire)
+    // rotation=90: validate réussit (Copropriétaire trouvé)
+    mockRecognize
+      .mockResolvedValueOnce({ data: { text: "123456789 abc def ghi jkl" } }) // 0°: ≥15 alphanum
+      .mockResolvedValueOnce({ data: { text: "Copropriétaire 0000001\nNOM PROPRIETAIRE" } }); // 90°
+    const page = makePage();
+    const validate = (text: string) => /Copropri/i.test(text);
+    const result = await ocrPageWithAutoRotation(page, validate);
+    expect(result.rotationCorrection).toBe(90);
+    expect(result.text).toContain("Copropriétaire");
+    // Only 2 renders: 0° (validate failed) and 90° (validate passed)
+    expect(page.getViewport).toHaveBeenCalledTimes(2);
+  });
+
+  it("fait le fallback full OCR à la rotation avec le plus d'alphanum si validate échoue partout", async () => {
+    // rotation=90 has the most alphanum chars → full OCR should use rotation=90
+    mockRecognize
+      .mockResolvedValueOnce({ data: { text: "ab" } }) // 0°: 2 alphanum
+      .mockResolvedValueOnce({ data: { text: "ABCDEF GHIJKL MNOPQR STUVWX" } }) // 90°: 24 alphanum (most)
+      .mockResolvedValueOnce({ data: { text: "abc" } }) // 180°: 3 alphanum
+      .mockResolvedValueOnce({ data: { text: "abcd" } }) // 270°: 4 alphanum
+      .mockResolvedValueOnce({ data: { text: "texte pleine page rotation 90" } }); // full at 90°
+    const page = makePage();
+    const validate = (text: string) => text.includes("OWNER"); // never passes
+    const result = await ocrPageWithAutoRotation(page, validate);
+    expect(result.rotationCorrection).toBe(90);
+    expect(result.text).toBe("texte pleine page rotation 90");
     expect(mockRecognize).toHaveBeenCalledTimes(5);
   });
 });

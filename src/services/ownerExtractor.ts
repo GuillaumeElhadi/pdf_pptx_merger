@@ -110,6 +110,41 @@ function parseOwner(lines: Line[]): OwnerInfo | null {
   return matchOwner(lines.map((l) => l.text));
 }
 
+/**
+ * Detects the dominant text direction from pdfjs text item transforms.
+ *
+ * Each item's transform `[a, b, ...]` encodes text direction via atan2(b, a).
+ * Returns the rotation correction (0|90|180|270) needed to make text upright,
+ * or 0 when:
+ *   - fewer than 3 non-empty items (too sparse to determine reliably)
+ *   - the dominant angle is 0° (already upright)
+ *   - no single angle accounts for ≥50% of items (mixed/unreliable)
+ */
+function detectTextRotation(items: unknown[]): Rotation {
+  const angleCounts = new Map<number, number>();
+  let total = 0;
+
+  for (const item of items) {
+    if (!isPdfTextItem(item) || !item.str.trim()) continue;
+    const [a, b] = item.transform;
+    if (a === 0 && b === 0) continue;
+
+    const angleDeg = Math.atan2(b, a) * (180 / Math.PI);
+    const bucketed = Math.round(angleDeg / 90) * 90;
+    const normalized = ((bucketed % 360) + 360) % 360;
+    angleCounts.set(normalized, (angleCounts.get(normalized) ?? 0) + 1);
+    total++;
+  }
+
+  if (total < 3) return 0;
+
+  const [dominant, count] = [...angleCounts.entries()].sort((x, y) => y[1] - x[1])[0];
+
+  if (dominant === 0 || count / total < 0.5) return 0;
+
+  return ((360 - dominant) % 360) as Rotation;
+}
+
 /** Maximum time to wait for pdfjs to load a single PDF before giving up. */
 const LOAD_TIMEOUT_MS = 20_000;
 
@@ -151,24 +186,39 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
 
       let owner: OwnerInfo | null = null;
 
+      const toLines = (text: string) =>
+        text
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean);
+
       if (hasText) {
         owner = parseOwner(buildLines(content.items));
+        const rotationCorrection = detectTextRotation(content.items);
+        if (rotationCorrection !== 0) {
+          pageRotationCorrections.set(pageNum, rotationCorrection);
+          if (!owner) {
+            // Rotated text: buildLines() can't reconstruct visual line order → fall back to OCR
+            const { text: cropText } = await ocrPageWithAutoRotation(
+              page,
+              (text) => matchOwner(toLines(text)) !== null
+            );
+            owner = matchOwner(toLines(cropText));
+            if (!owner) {
+              const fullText = await ocrPage(page, "full", rotationCorrection);
+              owner = matchOwner(toLines(fullText));
+            }
+          }
+        }
       } else {
-        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(page);
-        owner = matchOwner(
-          cropText
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean)
+        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(
+          page,
+          (text) => matchOwner(toLines(text)) !== null
         );
+        owner = matchOwner(toLines(cropText));
         if (!owner) {
           const fullText = await ocrPage(page, "full", rotationCorrection);
-          owner = matchOwner(
-            fullText
-              .split("\n")
-              .map((l) => l.trim())
-              .filter(Boolean)
-          );
+          owner = matchOwner(toLines(fullText));
         }
         if (rotationCorrection !== 0) pageRotationCorrections.set(pageNum, rotationCorrection);
       }

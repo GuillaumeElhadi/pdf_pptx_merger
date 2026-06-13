@@ -416,7 +416,7 @@ describe("extractOwners — fallback OCR (page sans texte)", () => {
     });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything());
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
     expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
   });
 
@@ -439,7 +439,11 @@ describe("extractOwners — fallback OCR (page sans texte)", () => {
     vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPageWithAutoRotation).toHaveBeenNthCalledWith(1, expect.anything());
+    expect(ocrPageWithAutoRotation).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.any(Function)
+    );
     expect(ocrPage).toHaveBeenNthCalledWith(1, expect.anything(), "full", 90);
     expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
   });
@@ -568,7 +572,7 @@ describe("extractOwners — pageRotationCorrections", () => {
     expect(result.pageRotationCorrections.size).toBe(0);
   });
 
-  it("pageRotationCorrections est un Map vide pour une page avec texte intégré", async () => {
+  it("pageRotationCorrections est vide pour une page avec texte normalement orienté", async () => {
     mockDocument([
       {
         width: 842,
@@ -579,5 +583,323 @@ describe("extractOwners — pageRotationCorrections", () => {
     const result = await extractOwners("/doc.pdf");
     expect(result.pageRotationCorrections).toBeInstanceOf(Map);
     expect(result.pageRotationCorrections.size).toBe(0);
+  });
+});
+
+// ── detectTextRotation — via extractOwners text path ──────────────────────────
+
+/** Text item whose content direction is rotated by `angleDeg` degrees. */
+function rotatedItem(str: string, y: number, angleDeg: number) {
+  const rad = (angleDeg * Math.PI) / 180;
+  const fs = 12;
+  return { str, transform: [Math.cos(rad) * fs, Math.sin(rad) * fs, 0, 0, 0, y] };
+}
+
+describe("extractOwners — rotation detection from text transforms", () => {
+  it("stores correction=90 when text items are 90° CW (transform angle −90°)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Tableau des charges", 700, 270),
+          rotatedItem("Exercice 2025", 680, 270),
+          rotatedItem("Copropriétaire 0000001", 660, 270),
+          rotatedItem("OWNER A", 640, 270),
+          rotatedItem("Montant total", 620, 270),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+  });
+
+  it("stores correction=270 when text items are 90° CCW (transform angle +90°)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Texte A", 700, 90),
+          rotatedItem("Texte B", 680, 90),
+          rotatedItem("Texte C", 660, 90),
+          rotatedItem("Texte D", 640, 90),
+          rotatedItem("Texte E", 620, 90),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.get(1)).toBe(270);
+  });
+
+  it("stores correction=180 when text items are upside down (transform angle 180°)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Ligne A", 700, 180),
+          rotatedItem("Ligne B", 680, 180),
+          rotatedItem("Ligne C", 660, 180),
+          rotatedItem("Ligne D", 640, 180),
+          rotatedItem("Ligne E", 620, 180),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.get(1)).toBe(180);
+  });
+
+  it("stores no correction for normally-oriented text (transform angle 0°)", async () => {
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [
+          textItem("Copropriétaire 0000001", 500),
+          textItem("OWNER A", 480),
+          textItem("Charges communes", 460),
+          textItem("Montant total", 440),
+          textItem("Exercice 2025", 420),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+  });
+
+  it("stores no correction when fewer than 3 non-empty items (unreliable)", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [rotatedItem("Texte A", 700, 270), rotatedItem("Texte B", 680, 270)],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+  });
+
+  it("stores no correction when no single orientation reaches 50% of items", async () => {
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          textItem("Normal A", 700),
+          textItem("Normal B", 680),
+          rotatedItem("CW A", 660, 270),
+          rotatedItem("CW B", 640, 270),
+          rotatedItem("CCW A", 620, 90),
+          rotatedItem("CCW B", 600, 90),
+        ],
+      },
+    ]);
+    // Each angle: 2/6 = 33% — none reaches 50%
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+  });
+
+  it("applies correction to page 2 independently of page 1", async () => {
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [
+          textItem("Page 1 normal A", 500),
+          textItem("Page 1 normal B", 480),
+          textItem("Page 1 normal C", 460),
+        ],
+      },
+      {
+        width: 595,
+        height: 842,
+        items: [
+          rotatedItem("Page 2 CW A", 700, 270),
+          rotatedItem("Page 2 CW B", 680, 270),
+          rotatedItem("Page 2 CW C", 660, 270),
+          rotatedItem("Page 2 CW D", 640, 270),
+          rotatedItem("Page 2 CW E", 620, 270),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.pageRotationCorrections.has(1)).toBe(false);
+    expect(result.pageRotationCorrections.get(2)).toBe(90);
+  });
+});
+
+describe("extractOwners — rotated embedded text falls back to OCR", () => {
+  it("uses OCR when hasText=true but text is 90°CW-rotated and parseOwner fails", async () => {
+    // Both items share y=500 → buildLines() merges them into one line → matchOwner fails.
+    // transform[0]=0, transform[1]=-12 → atan2(-12,0) = -90° → bucketed to 270° →
+    // correction = (360-270)%360 = 90 (90° CW rotation detected).
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 90,
+    });
+
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          // 3 items needed: detectTextRotation requires ≥3 to determine dominant angle reliably
+          { str: "Copropriétaire 0000001", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "S.A.S. IMMO. CARREFOUR", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "Exercice 2025", transform: [0, -12, 0, 0, 100, 500] },
+        ],
+      },
+    ]);
+
+    const result = await extractOwners("/doc.pdf");
+
+    expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
+    expect(result.pageOwners.get(1)).toEqual({ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" });
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
+    expect(ocrPage).not.toHaveBeenCalled();
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+  });
+
+  it("escalates to ocrPage('full') when crop OCR also fails on rotated page", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "texte sans propriétaire",
+      rotationCorrection: 90,
+    });
+    vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
+
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          { str: "Copropriétaire 0000042", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "SARL DUPONT IMMOBILIER", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "Autre texte", transform: [0, -12, 0, 0, 100, 500] },
+          { str: "Encore du texte", transform: [0, -12, 0, 0, 50, 500] },
+        ],
+      },
+    ]);
+
+    const result = await extractOwners("/doc.pdf");
+
+    expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
+    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "full", 90);
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+  });
+
+  it("does NOT call OCR when hasText=true but parseOwner already succeeds", async () => {
+    // Normally-oriented items at distinct y values → buildLines separates them → parseOwner wins.
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [
+          { str: "Copropriétaire 0000001", transform: [12, 0, 0, 12, 200, 500] },
+          { str: "S.A.S. IMMO. CARREFOUR", transform: [12, 0, 0, 12, 150, 480] },
+          { str: "Autre texte A", transform: [12, 0, 0, 12, 150, 460] },
+          { str: "Autre texte B", transform: [12, 0, 0, 12, 150, 440] },
+          { str: "Autre texte C", transform: [12, 0, 0, 12, 150, 420] },
+        ],
+      },
+    ]);
+
+    const result = await extractOwners("/doc.pdf");
+
+    expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
+    expect(ocrPageWithAutoRotation).not.toHaveBeenCalled();
+    expect(ocrPage).not.toHaveBeenCalled();
+  });
+
+  it("hasText=true + rotation: ocrPageWithAutoRotation appelé AVEC validate (Pattern 1)", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 90,
+    });
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          { str: "Copropriétaire 0000001", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "S.A.S. IMMO. CARREFOUR", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "Exercice 2025", transform: [0, -12, 0, 0, 100, 500] },
+        ],
+      },
+    ]);
+    await extractOwners("/doc.pdf");
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
+  });
+});
+
+describe("extractOwners — Type 2 (Edition par Coproprietaire) via OCR", () => {
+  it("image-only page: détecte Pattern 2 (date + owner) via OCR crop", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "10189 SDC CC ST POL JARDINS\nT5 PPA CLOS EN 2025\nDu 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.",
+      rotationCorrection: 0,
+    });
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "CARREFOUR HYPER.", name: "CARREFOUR HYPER." }]);
+    expect(result.pageOwners.get(1)?.name).toBe("CARREFOUR HYPER.");
+  });
+
+  it("image-only page: plusieurs pages avec owners distincts (Pattern 2)", async () => {
+    vi.mocked(ocrPageWithAutoRotation)
+      .mockResolvedValueOnce({
+        text: "Du 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.",
+        rotationCorrection: 0,
+      })
+      .mockResolvedValueOnce({
+        text: "Du 01/01/2025 au 31/12/2025\nCONFORAMA DEVELLOPPEMENT 12",
+        rotationCorrection: 0,
+      });
+    mockDocument([
+      { width: 595, height: 842, items: [] },
+      { width: 595, height: 842, items: [] },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toHaveLength(2);
+    expect(result.owners[0].name).toBe("CARREFOUR HYPER.");
+    expect(result.owners[1].name).toBe("CONFORAMA DEVELLOPPEMENT 12");
+  });
+
+  it("image-only page: pas d'owner si aucun nom ne suit la date (document commun)", async () => {
+    // Date line present but no owner name follows → all-owners document → should produce no owner
+    const noOwnerText =
+      "10189 SDC CC ST POL JARDINS\nT5 PPA CLOS EN 2025\nDu 01/01/2025 au 31/12/2025";
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: noOwnerText,
+      rotationCorrection: 0,
+    });
+    vi.mocked(ocrPage).mockResolvedValueOnce(noOwnerText);
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([]);
+    expect(result.pageOwners.size).toBe(0);
+  });
+
+  it("hasText=true + rotation + Pattern 2 : ocrPageWithAutoRotation appelé avec validate", async () => {
+    // Embedded text rotated 90° CW — all items share same y → buildLines merges them → matchOwner fails
+    // After the gap fix, ocrPageWithAutoRotation must receive a validate callback
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Du 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.",
+      rotationCorrection: 90,
+    });
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          { str: "Du 01/01/2025 au 31/12/2025", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "CARREFOUR HYPER.", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "T5 PPA CLOS EN 2025", transform: [0, -12, 0, 0, 100, 500] },
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "CARREFOUR HYPER.", name: "CARREFOUR HYPER." }]);
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
   });
 });

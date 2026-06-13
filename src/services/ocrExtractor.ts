@@ -86,9 +86,19 @@ export async function ocrPage(
   }
 
   try {
+    // For the crop strategy, skip the leftmost 33% to exclude the management
+    // company left column that shares Y positions with center/right columns,
+    // causing Tesseract to merge their text onto single lines and breaking
+    // pattern matching (e.g. "D 403 123 Du 01/01/2025 au..." instead of
+    // "Du 01/01/2025 au..." alone on its line).
+    const leftSkip = strategy === "crop" ? Math.floor(width * 0.33) : 0;
+    const recognizeOptions =
+      leftSkip > 0
+        ? { rectangle: { left: leftSkip, top: 0, width: width - leftSkip, height } }
+        : undefined;
     const {
       data: { text },
-    } = await worker.recognize(dataUrl);
+    } = await worker.recognize(dataUrl, recognizeOptions);
     console.info("[ocrPage] recognize OK, chars:", text.length);
     return text;
   } catch (e) {
@@ -103,18 +113,35 @@ function countAlphanumeric(text: string): number {
 
 /**
  * Tries canvas rotations 0°→90°→180°→270° using crop OCR.
- * Returns the first rotation yielding ≥ 15 alphanumeric chars.
- * Falls back to full-page OCR at 0° if no crop attempt succeeds.
- * Callers are responsible for any additional full-page fallback at the detected rotation.
+ *
+ * When `validate` is provided, returns the first rotation where validate(text) is true.
+ * Without `validate`, returns the first rotation yielding ≥ 15 alphanumeric chars.
+ *
+ * Falls back to full-page OCR at the rotation with the most alphanumeric chars if no
+ * crop attempt passes the criterion. Callers are responsible for any additional
+ * full-page fallback at the detected rotation.
  */
 export async function ocrPageWithAutoRotation(
-  page: PDFPageProxy
+  page: PDFPageProxy,
+  validate?: (text: string) => boolean
 ): Promise<{ text: string; rotationCorrection: Rotation }> {
+  let bestRotation: Rotation = 0;
+  let bestScore = -1;
+
   for (const rotation of [0, 90, 180, 270] as Rotation[]) {
     const text = await ocrPage(page, "crop", rotation);
-    if (countAlphanumeric(text) >= 15) {
+    const isValid = validate ? validate(text) : countAlphanumeric(text) >= 15;
+
+    if (isValid) {
       return { text, rotationCorrection: rotation };
     }
+
+    const score = countAlphanumeric(text);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRotation = rotation;
+    }
   }
-  return { text: await ocrPage(page, "full", 0), rotationCorrection: 0 };
+
+  return { text: await ocrPage(page, "full", bestRotation), rotationCorrection: bestRotation };
 }
