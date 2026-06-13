@@ -23,12 +23,12 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
   });
 
   // Combine user-applied rotation with auto-detected page correction for display.
-  // pdfjs corrections use CCW-positive convention (designed for getViewport rotation).
-  // CSS rotate() uses CW-positive convention. Invert the page correction before
-  // adding it so the visual direction is correct.
+  // pageCorrection values are produced by detectTextRotation / ocrPageWithAutoRotation
+  // as (360 − dominant) % 360 — which is directly usable as CSS CW rotation degrees.
+  // No convention conversion is needed: CSS rotate(pageCorrection deg) makes the
+  // corrected text read left-to-right.
   const pageCorrection = (item.pageRotationCorrections?.get(1) ?? 0) as Rotation;
-  const pageCorrectionCss = ((360 - pageCorrection) % 360) as Rotation;
-  const displayRotation = ((item.rotation + pageCorrectionCss) % 360) as Rotation;
+  const displayRotation = ((item.rotation + pageCorrection) % 360) as Rotation;
 
   const rowStyle: React.CSSProperties = {
     ...styles.row,

@@ -186,6 +186,12 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
 
       let owner: OwnerInfo | null = null;
 
+      const toLines = (text: string) =>
+        text
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean);
+
       if (hasText) {
         owner = parseOwner(buildLines(content.items));
         const rotationCorrection = detectTextRotation(content.items);
@@ -193,40 +199,26 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
           pageRotationCorrections.set(pageNum, rotationCorrection);
           if (!owner) {
             // Rotated text: buildLines() can't reconstruct visual line order → fall back to OCR
-            const { text: cropText } = await ocrPageWithAutoRotation(page);
-            owner = matchOwner(
-              cropText
-                .split("\n")
-                .map((l) => l.trim())
-                .filter(Boolean)
+            const { text: cropText } = await ocrPageWithAutoRotation(
+              page,
+              (text) => matchOwner(toLines(text)) !== null
             );
+            owner = matchOwner(toLines(cropText));
             if (!owner) {
               const fullText = await ocrPage(page, "full", rotationCorrection);
-              owner = matchOwner(
-                fullText
-                  .split("\n")
-                  .map((l) => l.trim())
-                  .filter(Boolean)
-              );
+              owner = matchOwner(toLines(fullText));
             }
           }
         }
       } else {
-        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(page);
-        owner = matchOwner(
-          cropText
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean)
+        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(
+          page,
+          (text) => matchOwner(toLines(text)) !== null
         );
+        owner = matchOwner(toLines(cropText));
         if (!owner) {
           const fullText = await ocrPage(page, "full", rotationCorrection);
-          owner = matchOwner(
-            fullText
-              .split("\n")
-              .map((l) => l.trim())
-              .filter(Boolean)
-          );
+          owner = matchOwner(toLines(fullText));
         }
         if (rotationCorrection !== 0) pageRotationCorrections.set(pageNum, rotationCorrection);
       }

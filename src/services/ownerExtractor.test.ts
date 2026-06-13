@@ -416,7 +416,7 @@ describe("extractOwners — fallback OCR (page sans texte)", () => {
     });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything());
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
     expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
   });
 
@@ -439,7 +439,11 @@ describe("extractOwners — fallback OCR (page sans texte)", () => {
     vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER");
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(ocrPageWithAutoRotation).toHaveBeenNthCalledWith(1, expect.anything());
+    expect(ocrPageWithAutoRotation).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.any(Function)
+    );
     expect(ocrPage).toHaveBeenNthCalledWith(1, expect.anything(), "full", 90);
     expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
   });
@@ -806,5 +810,96 @@ describe("extractOwners — rotated embedded text falls back to OCR", () => {
     expect(result.owners).toEqual([{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }]);
     expect(ocrPageWithAutoRotation).not.toHaveBeenCalled();
     expect(ocrPage).not.toHaveBeenCalled();
+  });
+
+  it("hasText=true + rotation: ocrPageWithAutoRotation appelé AVEC validate (Pattern 1)", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 90,
+    });
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          { str: "Copropriétaire 0000001", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "S.A.S. IMMO. CARREFOUR", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "Exercice 2025", transform: [0, -12, 0, 0, 100, 500] },
+        ],
+      },
+    ]);
+    await extractOwners("/doc.pdf");
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
+  });
+});
+
+describe("extractOwners — Type 2 (Edition par Coproprietaire) via OCR", () => {
+  it("image-only page: détecte Pattern 2 (date + owner) via OCR crop", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "10189 SDC CC ST POL JARDINS\nT5 PPA CLOS EN 2025\nDu 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.",
+      rotationCorrection: 0,
+    });
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "CARREFOUR HYPER.", name: "CARREFOUR HYPER." }]);
+    expect(result.pageOwners.get(1)?.name).toBe("CARREFOUR HYPER.");
+  });
+
+  it("image-only page: plusieurs pages avec owners distincts (Pattern 2)", async () => {
+    vi.mocked(ocrPageWithAutoRotation)
+      .mockResolvedValueOnce({
+        text: "Du 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.",
+        rotationCorrection: 0,
+      })
+      .mockResolvedValueOnce({
+        text: "Du 01/01/2025 au 31/12/2025\nCONFORAMA DEVELLOPPEMENT 12",
+        rotationCorrection: 0,
+      });
+    mockDocument([
+      { width: 595, height: 842, items: [] },
+      { width: 595, height: 842, items: [] },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toHaveLength(2);
+    expect(result.owners[0].name).toBe("CARREFOUR HYPER.");
+    expect(result.owners[1].name).toBe("CONFORAMA DEVELLOPPEMENT 12");
+  });
+
+  it("image-only page: pas d'owner si aucun nom ne suit la date (document commun)", async () => {
+    // Date line present but no owner name follows → all-owners document → should produce no owner
+    const noOwnerText =
+      "10189 SDC CC ST POL JARDINS\nT5 PPA CLOS EN 2025\nDu 01/01/2025 au 31/12/2025";
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: noOwnerText,
+      rotationCorrection: 0,
+    });
+    vi.mocked(ocrPage).mockResolvedValueOnce(noOwnerText);
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([]);
+    expect(result.pageOwners.size).toBe(0);
+  });
+
+  it("hasText=true + rotation + Pattern 2 : ocrPageWithAutoRotation appelé avec validate", async () => {
+    // Embedded text rotated 90° CW — all items share same y → buildLines merges them → matchOwner fails
+    // After the gap fix, ocrPageWithAutoRotation must receive a validate callback
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Du 01/01/2025 au 31/12/2025\nCARREFOUR HYPER.",
+      rotationCorrection: 90,
+    });
+    mockDocument([
+      {
+        width: 595,
+        height: 842,
+        items: [
+          { str: "Du 01/01/2025 au 31/12/2025", transform: [0, -12, 0, 0, 200, 500] },
+          { str: "CARREFOUR HYPER.", transform: [0, -12, 0, 0, 150, 500] },
+          { str: "T5 PPA CLOS EN 2025", transform: [0, -12, 0, 0, 100, 500] },
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "CARREFOUR HYPER.", name: "CARREFOUR HYPER." }]);
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
   });
 });
