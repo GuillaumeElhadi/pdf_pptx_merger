@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.13.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.4...v3.13.0) (2026-06-14)
+
+
+### Features
+
+* implement support for multiple PPTX files with enhanced data model and UI updates ([#49](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/49)) ([b2dd399](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/b2dd399c577fa5ad91b21dbbe628cf22a20bb4c5))
+
 ## [3.12.4](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.3...v3.12.4) (2026-06-14)
 
 
