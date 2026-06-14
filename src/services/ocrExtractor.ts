@@ -65,16 +65,24 @@ export async function ocrPage(
   if (!ctx) throw new Error("Failed to get 2D canvas context");
 
   console.info("[ocrPage] rendering page to canvas...");
+  let dataUrl = "";
   try {
     await page.render({ canvasContext: ctx, viewport }).promise;
     console.info("[ocrPage] render OK");
+    dataUrl = canvas.toDataURL("image/png");
+    console.info("[ocrPage] dataUrl ready, length:", dataUrl.length);
   } catch (e) {
     console.error("[ocrPage] render FAILED:", String(e));
     throw e;
+  } finally {
+    // Release the GPU backing store immediately after extracting the data URL.
+    // Without this, processing many PDFs sequentially (up to 5 canvas renders per
+    // page for 4-rotation OCR) exhausts the browser's ~300 canvas context limit,
+    // causing getContext("2d") to return null for later PDFs and silently dropping
+    // all owner detections from those files.
+    canvas.width = 0;
+    canvas.height = 0;
   }
-
-  const dataUrl = canvas.toDataURL("image/png");
-  console.info("[ocrPage] dataUrl ready, length:", dataUrl.length);
 
   let worker: Worker;
   try {

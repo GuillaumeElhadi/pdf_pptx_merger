@@ -243,7 +243,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("peuple owners une fois l'extraction terminée", async () => {
-    const detected = [{ code: "0000001", name: "S.A.S. IMMO. CARREFOUR" }];
+    const detected = [{ code: "0000001", name: "IMMO CARREFOUR" }];
     vi.mocked(extractOwners).mockResolvedValue({
       owners: detected,
       pageOwners: new Map(),

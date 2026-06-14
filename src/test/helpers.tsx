@@ -34,7 +34,7 @@ export function makeSlide(id: string, slideIndex = 0): SlideItem {
 }
 
 export function makeOwnerInfo(overrides?: Partial<OwnerInfo>): OwnerInfo {
-  return { code: "0000001", name: "S.A.S. IMMO. CARREFOUR", ...overrides };
+  return { code: "0000001", name: "IMMO CARREFOUR", ...overrides };
 }
 
 // ── Wrappers ──────────────────────────────────────────────────────────────────

@@ -5,7 +5,29 @@ import type { Rotation } from "../types";
 
 export interface OwnerInfo {
   code: string; // e.g. "0000001"
-  name: string; // e.g. "S.A.S. IMMO. CARREFOUR"
+  name: string; // e.g. "IMMO CARREFOUR"
+}
+
+/**
+ * Normalizes a raw owner name extracted from a PDF:
+ * 1. Strips a leading juridical form (S.A.S., S.A., S.A.R.L., …) — uppercase letters 1–3 chars separated by dots
+ * 2. Removes all remaining dots
+ * 3. Removes leading non-alphanumeric characters (e.g. a stray leading hyphen from some PDFs)
+ * 4. Trims surrounding whitespace
+ *
+ * Examples:
+ *   "S.A.S. CARREFOUR HYPER." → "CARREFOUR HYPER"
+ *   "S.A. CONFORAMA  DEVELLOPPEMENT 12" → "CONFORAMA  DEVELLOPPEMENT 12"
+ *   "IMMO. CARREFOUR" → "IMMO CARREFOUR"
+ *   "-GHESQUIERE" → "GHESQUIERE"
+ */
+export function normalizeName(raw: string): string {
+  return raw
+    .replace(/^(?:[A-Z]{1,3}\.)+\s*/g, "")
+    .replace(/\./g, "")
+    .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, "")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 export interface ExtractionResult {
@@ -84,7 +106,7 @@ function matchOwner(orderedLines: string[]): OwnerInfo | null {
     const name = nameLine.replace(/\s+Exercice\s+du\s+.*$/i, "").trim();
     if (!name) continue;
 
-    return { code, name };
+    return { code, name: normalizeName(name) };
   }
 
   // Pattern 2: "Edition par Coproprietaire" — owner appears as subtitle after date range line
@@ -99,7 +121,40 @@ function matchOwner(orderedLines: string[]): OwnerInfo | null {
     const nameLine = orderedLines[nameLineIndex]?.trim();
     if (!nameLine) continue;
 
-    return { code: nameLine, name: nameLine };
+    const normalizedName = normalizeName(nameLine);
+    return { code: normalizedName, name: normalizedName };
+  }
+
+  // Pattern 3: "Référence :" marker (Carrefour Property Gestion "relevé individuel de charges") —
+  // recipient name appears on the line just before "Référence :".
+  for (let i = 1; i < orderedLines.length; i++) {
+    if (!/R[eé]f[eé]rence\s*:/i.test(orderedLines[i])) continue;
+
+    let nameLineIndex = i - 1;
+    // Skip numeric address lines AND labeled fields ("Arrêté : date", "Date : ...", etc.)
+    while (
+      nameLineIndex >= 0 &&
+      (/^\d/.test(orderedLines[nameLineIndex]) || orderedLines[nameLineIndex].includes(":"))
+    ) {
+      nameLineIndex--;
+    }
+
+    if (nameLineIndex < 0) continue;
+
+    const nameLine = orderedLines[nameLineIndex]?.trim();
+    if (!nameLine) continue;
+
+    const normalizedName = normalizeName(nameLine);
+    if (!normalizedName) continue;
+    // Reject OCR artifacts: company names are all-uppercase and contain no slashes.
+    // Mixed/lowercase text ("gestior", "Carrefour Property Gestion 8") and pagination
+    // fragments ("s/11") are noise. A trailing isolated letter signals a truncated
+    // document title ("RELEVE PROVISOIRE D" = "RELEVÉ PROVISOIRE DE CHARGES…").
+    if (/[a-z]/.test(normalizedName)) continue;
+    if (normalizedName.includes("/")) continue;
+    if (/ [A-Z]$/.test(normalizedName)) continue;
+
+    return { code: normalizedName, name: normalizedName };
   }
 
   return null;
@@ -208,6 +263,19 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
               const fullText = await ocrPage(page, "full", rotationCorrection);
               owner = matchOwner(toLines(fullText));
             }
+          }
+        } else if (!owner) {
+          // Hybrid page: some text is embedded (enough to make hasText=true) but the
+          // owner content is rendered as image (e.g. "Print to PDF" documents where the
+          // recipient block is a graphic). Fall back to OCR the same way as image-only pages.
+          const { text: cropText } = await ocrPageWithAutoRotation(
+            page,
+            (text) => matchOwner(toLines(text)) !== null
+          );
+          owner = matchOwner(toLines(cropText));
+          if (!owner) {
+            const fullText = await ocrPage(page, "full", 0);
+            owner = matchOwner(toLines(fullText));
           }
         }
       } else {
