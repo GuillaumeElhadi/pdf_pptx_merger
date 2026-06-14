@@ -4,16 +4,16 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { ThemeContext } from "../hooks/useTheme";
 import { useMergeStore } from "../store/useMergeStore";
 import { strings } from "../strings";
-import type { OwnerInfo, PdfItem, SlideItem } from "../types";
+import type { OwnerInfo, PdfItem, PptxSource, SlideItem } from "../types";
+
+export const TEST_SOURCE_ID = "test-source";
 import type { Update } from "@tauri-apps/plugin-updater";
 
 // ── Store reset ───────────────────────────────────────────────────────────────
 
 export function resetStore() {
   useMergeStore.setState({
-    pptxPath: null,
-    slidePdf: null,
-    slideCount: 0,
+    pptxSources: [],
     items: [],
     selectedIds: new Set(),
     status: "idle",
@@ -23,14 +23,18 @@ export function resetStore() {
   });
 }
 
+export function makePptxSource(slidePdf = "/tmp/slides.pdf"): PptxSource {
+  return { id: TEST_SOURCE_ID, pptxPath: "/deck.pptx", slidePdf, slideCount: 10, color: "#3b82f6" };
+}
+
 // ── Item factories ────────────────────────────────────────────────────────────
 
 export function makePdf(id: string, path = `/files/${id}.pdf`): PdfItem {
   return { id, type: "pdf", pdfPath: path, rotation: 0 };
 }
 
-export function makeSlide(id: string, slideIndex = 0): SlideItem {
-  return { id, type: "slide", slideIndex, rotation: 0 };
+export function makeSlide(id: string, slideIndex = 0, sourceId = TEST_SOURCE_ID): SlideItem {
+  return { id, type: "slide", slideIndex, rotation: 0, pptxSourceId: sourceId };
 }
 
 export function makeOwnerInfo(overrides?: Partial<OwnerInfo>): OwnerInfo {

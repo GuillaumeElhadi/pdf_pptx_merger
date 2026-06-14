@@ -8,7 +8,17 @@ import { Bridge } from "../services/bridge";
 import { extractOwners } from "../services/ownerExtractor";
 import { strings } from "../strings";
 import { logger } from "../utils/logger";
-import type { AppStatus, MergeItem, OwnerInfo, PdfItem, Rotation, SlideItem } from "../types";
+import type {
+  AppStatus,
+  MergeItem,
+  OwnerInfo,
+  PdfItem,
+  PptxSource,
+  Rotation,
+  SlideItem,
+} from "../types";
+
+const PPTX_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#06b6d4", "#ef4444"];
 
 function ownerToSnakeCase(name: string): string {
   return name
@@ -21,9 +31,7 @@ function ownerToSnakeCase(name: string): string {
 
 interface MergeStore {
   // ── PPTX state ────────────────────────────────────────────────────────────
-  pptxPath: string | null;
-  slidePdf: string | null;
-  slideCount: number;
+  pptxSources: PptxSource[];
 
   // ── Flat merge list ───────────────────────────────────────────────────────
   items: MergeItem[];
@@ -51,9 +59,7 @@ interface MergeStore {
 }
 
 export const useMergeStore = create<MergeStore>((set, get) => ({
-  pptxPath: null,
-  slidePdf: null,
-  slideCount: 0,
+  pptxSources: [],
   items: [],
   selectedIds: new Set(),
   status: "idle",
@@ -73,56 +79,44 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       return;
     }
 
-    const hasSlides = get().items.some((i) => i.type === "slide");
-    if (hasSlides) {
-      const ok = confirm(strings.confirm.replacePptx);
-      if (!ok) {
-        logger.action("loadPptx:replace-declined");
-        return;
-      }
-    }
-
     logger.action("loadPptx", { path });
 
-    set({
-      status: "converting",
-      statusMessage: strings.status.converting,
-      pptxPath: path,
-      items: get().items.filter((i) => i.type === "pdf"),
-      selectedIds: new Set(),
-      slidePdf: null,
-      slideCount: 0,
-    });
+    const color = PPTX_COLORS[get().pptxSources.length % PPTX_COLORS.length];
+
+    set({ status: "converting", statusMessage: strings.status.converting });
 
     try {
       const mergedPdf = await Bridge.convertPptx(path);
       set({ status: "extracting", statusMessage: strings.status.extracting });
       const count = await Bridge.getPdfPageCount(mergedPdf);
 
+      const sourceId = uuid();
+      const newSource: PptxSource = {
+        id: sourceId,
+        pptxPath: path,
+        slidePdf: mergedPdf,
+        slideCount: count,
+        color,
+      };
+
       const slideItems: SlideItem[] = Array.from({ length: count }, (_, i) => ({
         id: uuid(),
         type: "slide",
         slideIndex: i,
         rotation: 0,
+        pptxSourceId: sourceId,
       }));
 
       set((s) => ({
-        slidePdf: mergedPdf,
-        slideCount: count,
+        pptxSources: [...s.pptxSources, newSource],
         items: [...s.items, ...slideItems],
         status: "idle",
         statusMessage: strings.status.pptxLoaded(count),
       }));
-      logger.info("loadPptx", `OK — ${count} slides`);
+      logger.info("loadPptx", `OK — ${count} slides from "${path}"`);
     } catch (e) {
       logger.error("loadPptx", e);
-      set({
-        status: "error",
-        statusMessage: String(e),
-        pptxPath: null,
-        slidePdf: null,
-        slideCount: 0,
-      });
+      set({ status: "error", statusMessage: String(e) });
     }
   },
 
@@ -281,7 +275,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
   // ── generate ─────────────────────────────────────────────────────────────
   generate: async () => {
-    const { items, slidePdf, lastOutputPath, lastOutputDir } = get();
+    const { items, pptxSources, lastOutputPath, lastOutputDir } = get();
     const hasPdf = items.some((i) => i.type === "pdf");
     if (!hasPdf) return;
 
@@ -356,8 +350,11 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       for (const item of items) {
         if (item.type === "pdf") await loadOrCacheDoc(item.pdfPath);
       }
-      if (slidePdf && items.some((i) => i.type === "slide")) {
-        await loadOrCacheDoc(slidePdf);
+      const usedSourceIds = new Set(
+        items.filter((i): i is SlideItem => i.type === "slide").map((i) => i.pptxSourceId)
+      );
+      for (const source of pptxSources) {
+        if (usedSourceIds.has(source.id)) await loadOrCacheDoc(source.slidePdf);
       }
 
       // Normalize to forward slashes, then strip trailing slash except on filesystem roots (/ or C:/)
@@ -385,8 +382,9 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
           for (const item of items) {
             if (item.type === "slide") {
-              if (!slidePdf) continue;
-              const doc = await loadOrCacheDoc(slidePdf);
+              const source = pptxSources.find((s) => s.id === item.pptxSourceId);
+              if (!source) continue;
+              const doc = await loadOrCacheDoc(source.slidePdf);
               const [page] = await merged.copyPages(doc, [item.slideIndex]);
               if (item.rotation !== 0) {
                 page.setRotation(degrees((page.getRotation().angle + item.rotation) % 360));
@@ -481,8 +479,9 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
             });
             mergedPageCount += doc.getPageCount();
           } else {
-            if (!slidePdf) continue;
-            const doc = await loadOrCacheDoc(slidePdf);
+            const source = pptxSources.find((s) => s.id === item.pptxSourceId);
+            if (!source) continue;
+            const doc = await loadOrCacheDoc(source.slidePdf);
             const [page] = await merged.copyPages(doc, [item.slideIndex]);
             if (item.rotation !== 0) {
               page.setRotation(degrees((page.getRotation().angle + item.rotation) % 360));

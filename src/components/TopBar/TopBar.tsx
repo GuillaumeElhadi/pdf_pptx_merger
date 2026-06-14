@@ -5,7 +5,7 @@ import { strings } from "../../strings";
 import { useTheme } from "../../hooks/useTheme";
 
 export function TopBar() {
-  const { pptxPath, items, status, loadPptx, addPdfs } = useMergeStore();
+  const { pptxSources, items, status, loadPptx, addPdfs } = useMergeStore();
   const [googleDrivePath, setGoogleDrivePath] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
 
@@ -28,7 +28,11 @@ export function TopBar() {
             style={styles.btn}
             onClick={() => loadPptx()}
             disabled={busy}
-            title={pptxPath ?? strings.topBar.loadPptxNoFile}
+            title={
+              pptxSources.length === 0
+                ? strings.topBar.loadPptxNoFile
+                : pptxSources.map((s) => s.pptxPath.replace(/\\/g, "/").split("/").pop()).join("\n")
+            }
           >
             {isConverting ? strings.topBar.loadPptxConverting : strings.topBar.loadPptx}
           </button>

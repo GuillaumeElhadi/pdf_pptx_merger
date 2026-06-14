@@ -1,8 +1,11 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
 
 use crate::temp;
+
+static CONVERSION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn normalize_path(s: &str) -> String {
@@ -23,8 +26,9 @@ pub async fn convert_pptx(pptx_path: String) -> Result<String, String> {
 
     log::info!("[convert_pptx] Starting conversion: {pptx_path}");
 
+    let idx = CONVERSION_COUNTER.fetch_add(1, Ordering::SeqCst);
     let out_pdf = temp::get()
-        .join("slides_merged.pdf")
+        .join(format!("slides_merged_{idx}.pdf"))
         .to_string_lossy()
         .to_string();
 

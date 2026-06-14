@@ -24,12 +24,21 @@ export interface PdfItem {
   pageRotationCorrections?: Map<number, Rotation>;
 }
 
+export interface PptxSource {
+  id: string;
+  pptxPath: string;
+  slidePdf: string;
+  slideCount: number;
+  color: string;
+}
+
 export interface SlideItem {
   id: string;
   type: "slide";
-  /** 0-based index into the converted PPTX PDF. */
+  /** 0-based index into the source's slidePdf. */
   slideIndex: number;
   rotation: Rotation;
+  pptxSourceId: string;
 }
 
 export type MergeItem = PdfItem | SlideItem;
