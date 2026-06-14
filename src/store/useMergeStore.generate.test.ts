@@ -18,7 +18,7 @@ import { writeFile } from "@tauri-apps/plugin-fs";
 import { useMergeStore } from "./useMergeStore";
 import { Bridge } from "../services/bridge";
 import { strings } from "../strings";
-import type { PdfItem, SlideItem } from "../types";
+import type { PdfItem, PptxSource, SlideItem } from "../types";
 
 // ── Mocks module ──────────────────────────────────────────────────────────────
 
@@ -49,13 +49,19 @@ vi.mock("pdf-lib", () => ({
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 
+const TEST_SOURCE_ID = "test-source";
+
 // owners: [] simulates extraction completed with no owners found (the normal case for a plain PDF)
 function makePdf(id: string, path = `/files/${id}.pdf`): PdfItem {
   return { id, type: "pdf", pdfPath: path, rotation: 0, owners: [] };
 }
 
 function makeSlide(id: string, slideIndex = 0): SlideItem {
-  return { id, type: "slide", slideIndex, rotation: 0 };
+  return { id, type: "slide", slideIndex, rotation: 0, pptxSourceId: TEST_SOURCE_ID };
+}
+
+function makePptxSource(slidePdf = "/slides.pdf"): PptxSource {
+  return { id: TEST_SOURCE_ID, pptxPath: "/deck.pptx", slidePdf, slideCount: 10, color: "#3b82f6" };
 }
 
 /** Page PDF simulée avec getRotation / setRotation. */
@@ -95,9 +101,7 @@ function makeMergedDoc() {
 
 function resetStore() {
   useMergeStore.setState({
-    pptxPath: null,
-    slidePdf: null,
-    slideCount: 0,
+    pptxSources: [],
     items: [],
     selectedIds: new Set(),
     status: "idle",
@@ -273,7 +277,7 @@ describe("generate — M : plusieurs items", () => {
 
     useMergeStore.setState({
       items: [makePdf("a", "/a.pdf"), makeSlide("s", 1)],
-      slidePdf: "/slides.pdf",
+      pptxSources: [makePptxSource("/slides.pdf")],
     });
     await useMergeStore.getState().generate();
 
@@ -298,7 +302,7 @@ describe("generate — M : plusieurs items", () => {
 
     useMergeStore.setState({
       items: [makePdf("a", "/a.pdf"), makeSlide("s1", 0), makeSlide("s2", 2)],
-      slidePdf: "/slides.pdf",
+      pptxSources: [makePptxSource("/slides.pdf")],
     });
     await useMergeStore.getState().generate();
 
@@ -544,7 +548,7 @@ describe("generate — E : exceptions", () => {
     expect(useMergeStore.getState().progress).toBeNull();
   });
 
-  it("slide ignoré (sans planter) quand slidePdf est null", async () => {
+  it("slide ignoré (sans planter) quand la source est introuvable", async () => {
     const pdfPage = makePage();
     const mergedDoc = makeMergedDoc();
     mergedDoc.copyPages.mockResolvedValue([pdfPage]);
@@ -552,10 +556,10 @@ describe("generate — E : exceptions", () => {
     vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1) as any);
     vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
 
-    // PDF + slide, mais slidePdf absent → slide skippé via `if (!slidePdf) continue`
+    // PDF + slide, mais pptxSources vide → source introuvable → slide skippé
     useMergeStore.setState({
       items: [makePdf("a"), makeSlide("s")],
-      slidePdf: null,
+      pptxSources: [],
     });
     await useMergeStore.getState().generate();
 
@@ -835,7 +839,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
 
     useMergeStore.setState({
       items: [slide, pdfItem],
-      slidePdf: "/slides.pdf",
+      pptxSources: [makePptxSource("/slides.pdf")],
     });
     await useMergeStore.getState().generate();
 
@@ -997,7 +1001,7 @@ describe("generate — S : scénarios", () => {
         makeSlide("s", 2),
         { ...makePdf("b", "/b.pdf"), rotation: 0 as const },
       ],
-      slidePdf: "/slides.pdf",
+      pptxSources: [makePptxSource("/slides.pdf")],
     });
     await useMergeStore.getState().generate();
 

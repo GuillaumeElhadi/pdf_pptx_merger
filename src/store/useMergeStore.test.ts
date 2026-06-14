@@ -3,6 +3,8 @@ import { useMergeStore } from "./useMergeStore";
 import { Bridge } from "../services/bridge";
 import type { PdfItem, SlideItem } from "../types";
 
+const TEST_SOURCE_ID = "test-source";
+
 // Mock extractOwners so it doesn't load real PDFs
 vi.mock("../services/ownerExtractor", () => ({
   extractOwners: vi.fn().mockResolvedValue({ owners: [], pageOwners: new Map() }),
@@ -32,14 +34,12 @@ function makePdf(id: string, path = `/files/${id}.pdf`): PdfItem {
 }
 
 function makeSlide(id: string, slideIndex = 0): SlideItem {
-  return { id, type: "slide", slideIndex, rotation: 0 };
+  return { id, type: "slide", slideIndex, rotation: 0, pptxSourceId: TEST_SOURCE_ID };
 }
 
 function resetStore() {
   useMergeStore.setState({
-    pptxPath: null,
-    slidePdf: null,
-    slideCount: 0,
+    pptxSources: [],
     items: [],
     selectedIds: new Set(),
     status: "idle",
@@ -58,7 +58,7 @@ describe("useMergeStore — état initial", () => {
     expect(s.items).toHaveLength(0);
     expect(s.status).toBe("idle");
     expect(s.progress).toBeNull();
-    expect(s.pptxPath).toBeNull();
+    expect(s.pptxSources).toHaveLength(0);
     expect(s.selectedIds.size).toBe(0);
   });
 });
@@ -361,10 +361,11 @@ describe("useMergeStore — loadPptx", () => {
 
     await useMergeStore.getState().loadPptx();
 
-    const { items, slidePdf, slideCount, status } = useMergeStore.getState();
+    const { items, pptxSources, status } = useMergeStore.getState();
     expect(status).toBe("idle");
-    expect(slidePdf).toBe("/tmp/slides.pdf");
-    expect(slideCount).toBe(3);
+    expect(pptxSources).toHaveLength(1);
+    expect(pptxSources[0].slidePdf).toBe("/tmp/slides.pdf");
+    expect(pptxSources[0].slideCount).toBe(3);
     expect(items).toHaveLength(3);
     expect(items.every((i) => i.type === "slide")).toBe(true);
     expect(items.map((i) => (i as SlideItem).slideIndex)).toEqual([0, 1, 2]);
@@ -376,10 +377,9 @@ describe("useMergeStore — loadPptx", () => {
 
     await useMergeStore.getState().loadPptx();
 
-    const { status, pptxPath, slidePdf } = useMergeStore.getState();
+    const { status, pptxSources } = useMergeStore.getState();
     expect(status).toBe("error");
-    expect(pptxPath).toBeNull();
-    expect(slidePdf).toBeNull();
+    expect(pptxSources).toHaveLength(0);
   });
 
   it("ne fait rien si l'utilisateur annule la sélection de fichier", async () => {
@@ -396,7 +396,6 @@ describe("useMergeStore — loadPptx", () => {
     vi.mocked(Bridge.pickPptxFile).mockResolvedValue("/nouveau.pptx");
     vi.mocked(Bridge.convertPptx).mockResolvedValue("/tmp/slides.pdf");
     vi.mocked(Bridge.getPdfPageCount).mockResolvedValue(2);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     await useMergeStore.getState().loadPptx();
 

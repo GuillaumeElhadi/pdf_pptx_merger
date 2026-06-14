@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SlideItemRow } from "./SlideItemRow";
 import { useMergeStore } from "../../store/useMergeStore";
-import { DndWrapper, resetStore, makeSlide } from "../../test/helpers";
+import { DndWrapper, resetStore, makeSlide, makePptxSource } from "../../test/helpers";
 import { strings } from "../../strings";
 
 vi.mock("./ZoomThumb", () => ({ ZoomThumb: () => null }));
@@ -22,7 +22,7 @@ function renderRow(slideIndex = 0, selected = false) {
 
 beforeEach(() => {
   resetStore();
-  useMergeStore.setState({ slidePdf: "/tmp/slides.pdf" });
+  useMergeStore.setState({ pptxSources: [makePptxSource()] });
 });
 
 describe("SlideItemRow — rendu", () => {

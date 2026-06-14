@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MergeList } from "./MergeList";
 import { useMergeStore } from "../../store/useMergeStore";
-import { resetStore, makePdf, makeSlide } from "../../test/helpers";
+import { resetStore, makePdf, makeSlide, makePptxSource } from "../../test/helpers";
 import { strings } from "../../strings";
 
 // ZoomThumb utilise pdfjs-dist qui ne tourne pas dans jsdom
@@ -38,7 +38,7 @@ describe("MergeList — avec items", () => {
 
   it("affiche le label pour chaque SlideItem", () => {
     useMergeStore.setState({
-      slidePdf: "/tmp/slides.pdf",
+      pptxSources: [makePptxSource()],
       items: [makeSlide("s1", 0), makeSlide("s2", 2)],
     });
     render(<MergeList />);
@@ -48,7 +48,7 @@ describe("MergeList — avec items", () => {
 
   it("affiche un mix de PDFs et de slides", () => {
     useMergeStore.setState({
-      slidePdf: "/tmp/slides.pdf",
+      pptxSources: [makePptxSource()],
       items: [makePdf("a", "/docs/intro.pdf"), makeSlide("s1", 0)],
     });
     render(<MergeList />);

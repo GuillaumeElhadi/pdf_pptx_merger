@@ -15,7 +15,11 @@ interface Props {
 }
 
 export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Props) {
-  const { slidePdf, removeItem, rotateItems, selectedIds } = useMergeStore();
+  const { pptxSources, removeItem, rotateItems, selectedIds } = useMergeStore();
+  const source = pptxSources.find((s) => s.id === item.pptxSourceId);
+  const slidePdf = source?.slidePdf ?? null;
+  const sourceColor = source?.color ?? "var(--accent)";
+  const sourceBasename = source ? (source.pptxPath.replace(/\\/g, "/").split("/").pop() ?? "") : "";
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -45,6 +49,7 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
       }}
       title={selected ? strings.slideItem.selectTooltip : strings.slideItem.unselectTooltip}
     >
+      <div style={{ ...styles.sourceBar, background: sourceColor }} />
       {isGroupFollower && <div style={styles.followerBar} />}
 
       <span style={styles.handle}>⠿</span>
@@ -61,7 +66,12 @@ export function SlideItemRow({ item, selected, onSelect, isGroupFollower }: Prop
         {item.rotation !== 0 && <span style={styles.rotationBadge}>{item.rotation}°</span>}
       </div>
 
-      <span style={styles.label}>{strings.slideItem.label(item.slideIndex + 1)}</span>
+      <span style={styles.label}>
+        {strings.slideItem.label(item.slideIndex + 1)}
+        {sourceBasename && (
+          <span style={{ ...styles.sourceName, color: sourceColor }}> — {sourceBasename}</span>
+        )}
+      </span>
 
       {isGroupFollower && <span style={styles.followerTag}>{strings.slideItem.followerTag}</span>}
 
@@ -180,5 +190,17 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "2px 6px",
     borderRadius: 4,
     flexShrink: 0,
+  },
+  sourceBar: {
+    position: "absolute" as const,
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    borderRadius: "6px 0 0 6px",
+  },
+  sourceName: {
+    fontSize: 11,
+    opacity: 0.85,
   },
 };
