@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.12.4](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.3...v3.12.4) (2026-06-14)
+
+
+### Bug Fixes
+
+* disable TopBar buttons during extracting status ([#45](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/45)) ([0a64b41](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/0a64b41311ccfd9257268dfa32718f293c8cce3f))
+* owner detections with ocr ([#47](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/47)) ([78e3d16](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/78e3d16d109f98b646a7fe53df7c09f8e374c805))
+
 ## [3.12.3](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.2...v3.12.3) (2026-06-07)
 
 
