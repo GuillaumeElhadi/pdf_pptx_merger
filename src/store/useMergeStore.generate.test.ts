@@ -783,7 +783,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
 
   it("noms avec accents et ponctuation → chemins snake_case corrects", async () => {
     const ownerA = { code: "0000003", name: "FONCIÈRE ATLANTIQUE" };
-    const ownerB = { code: "0000004", name: "S.A.S. IMMO. CARREFOUR" };
+    const ownerB = { code: "0000004", name: "IMMO CARREFOUR" };
     const pageOwnersMap = new Map([
       [1, ownerA],
       [2, ownerB],
@@ -807,7 +807,7 @@ describe("generate — multi-owner : split par propriétaire", () => {
     await useMergeStore.getState().generate();
 
     expect(writeFile).toHaveBeenCalledWith("/out/fonciere_atlantique.pdf", expect.any(Uint8Array));
-    expect(writeFile).toHaveBeenCalledWith("/out/s_a_s_immo_carrefour.pdf", expect.any(Uint8Array));
+    expect(writeFile).toHaveBeenCalledWith("/out/immo_carrefour.pdf", expect.any(Uint8Array));
   });
 
   it("slides toujours incluses dans tous les outputs", async () => {
@@ -863,6 +863,52 @@ describe("generate — multi-owner : split par propriétaire", () => {
     expect(writeFile).not.toHaveBeenCalled();
     expect(Bridge.pickSaveDirectory).not.toHaveBeenCalled();
     expect(useMergeStore.getState().status).toBe("idle");
+  });
+
+  it("deux fichiers avec les mêmes owners mais des codes différents → déduplication par nom (2 owners, pas 4)", async () => {
+    // File 1 (Pattern 1 — PRREPC): numeric code
+    const ownerXNumeric = { code: "0000001", name: "OWNER X" };
+    const ownerYNumeric = { code: "0000002", name: "OWNER Y" };
+    // File 2 (Pattern 2 — EDITION PAR COPROPRIETAIRE): name used as code
+    const ownerXNamed = { code: "OWNER X", name: "OWNER X" };
+    const ownerYNamed = { code: "OWNER Y", name: "OWNER Y" };
+
+    const pdfFile1: PdfItem = {
+      ...makePdf("f1", "/f1.pdf"),
+      owners: [ownerXNumeric, ownerYNumeric],
+      pageOwners: new Map([
+        [1, ownerXNumeric],
+        [2, ownerYNumeric],
+      ]),
+    };
+    const pdfFile2: PdfItem = {
+      ...makePdf("f2", "/f2.pdf"),
+      owners: [ownerXNamed, ownerYNamed],
+      pageOwners: new Map([
+        [1, ownerXNamed],
+        [2, ownerYNamed],
+      ]),
+    };
+
+    const mergedDocX = makeMergedDoc();
+    const mergedDocY = makeMergedDoc();
+    vi.mocked(PDFDocument.create)
+      .mockResolvedValueOnce(mergedDocX as any)
+      .mockResolvedValueOnce(mergedDocY as any);
+    vi.mocked(PDFDocument.load)
+      .mockResolvedValueOnce(makeSourceDoc(2) as any)
+      .mockResolvedValueOnce(makeSourceDoc(2) as any);
+    vi.mocked(Bridge.pickSaveDirectory).mockResolvedValue("/out");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    useMergeStore.setState({ items: [pdfFile1, pdfFile2] });
+    await useMergeStore.getState().generate();
+
+    // Must produce 2 files (not 4) — same owner name = same owner across files
+    expect(writeFile).toHaveBeenCalledTimes(2);
+    // Each owner's PDF must include pages from both files: 1 page from f1 + 1 page from f2 = 2
+    expect(mergedDocX.addPage).toHaveBeenCalledTimes(2);
+    expect(mergedDocY.addPage).toHaveBeenCalledTimes(2);
   });
 
   it("pageRotationCorrections s'applique sur le chemin multi-owner (includedIndices)", async () => {

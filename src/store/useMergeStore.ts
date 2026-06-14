@@ -164,7 +164,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
           const { owners, pageOwners, pageRotationCorrections } = await extractOwners(item.pdfPath);
           done++;
           for (const o of owners) {
-            if (!allFoundOwners.has(o.code)) allFoundOwners.set(o.code, o);
+            if (!allFoundOwners.has(o.name)) allFoundOwners.set(o.name, o);
           }
           logger.info(
             "addPdfs:extractOwners",
@@ -299,7 +299,7 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
     for (const item of items) {
       if (item.type === "pdf" && item.owners) {
         for (const owner of item.owners) {
-          if (!allOwners.has(owner.code)) allOwners.set(owner.code, owner);
+          if (!allOwners.has(owner.name)) allOwners.set(owner.name, owner);
         }
       }
     }
@@ -410,13 +410,13 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
                   }
                   merged.addPage(p);
                 });
-              } else if (item.owners.some((o) => o.code === owner.code)) {
+              } else if (item.owners.some((o) => o.name === owner.name)) {
                 // PDF contains this owner — batch-collect indices first, then copyPages once
                 const pageOwners = item.pageOwners ?? new Map();
                 const includedIndices: number[] = [];
                 for (let pageIdx = 0; pageIdx < pageCount; pageIdx++) {
                   const pageOwner = pageOwners.get(pageIdx + 1);
-                  if (!pageOwner || pageOwner.code === owner.code) {
+                  if (!pageOwner || pageOwner.name === owner.name) {
                     includedIndices.push(pageIdx);
                   }
                 }
