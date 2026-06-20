@@ -47,11 +47,18 @@ export function ZoomThumb({
     if (!thumbRef.current) return;
     const rect = thumbRef.current.getBoundingClientRect();
     const margin = 12;
-    const topAbove = rect.top - ZOOM_H - margin;
-    const top = topAbove >= 8 ? topAbove : rect.bottom + margin;
+    // For 90°/270° rotations the displayed box is swapped (see zoomImg style
+    // below), so the overlay's true on-screen footprint is ZOOM_W tall, not ZOOM_H.
+    const boxHeight = rotation === 90 || rotation === 270 ? ZOOM_W : ZOOM_H;
+    const boxWidth = rotation === 90 || rotation === 270 ? ZOOM_H : ZOOM_W;
+    const topAbove = rect.top - boxHeight - margin;
+    const top = Math.min(
+      Math.max(8, topAbove >= 8 ? topAbove : rect.bottom + margin),
+      window.innerHeight - boxHeight - 8
+    );
     const left = Math.min(
-      Math.max(8, rect.left + rect.width / 2 - ZOOM_W / 2),
-      window.innerWidth - ZOOM_W - 8
+      Math.max(8, rect.left + rect.width / 2 - boxWidth / 2),
+      window.innerWidth - boxWidth - 8
     );
     setZoomPos({ top, left });
   };
