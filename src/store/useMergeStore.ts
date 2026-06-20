@@ -385,14 +385,16 @@ export const useMergeStore = create<MergeStore>((set, get) => {
 
     // ── generate ─────────────────────────────────────────────────────────────
     generate: async () => {
-      const { items, pptxSources, lastOutputPath, lastOutputDir } = get();
+      const { items, pptxSources, lastOutputPath, lastOutputDir, ownersDetectionEnabled } = get();
       const hasPdf = items.some((i) => i.type === "pdf");
       if (!hasPdf) return;
 
-      // Guard: if any PDF still has owners === undefined (and no error), extraction is in progress
-      const hasPendingExtraction = items.some(
-        (i) => i.type === "pdf" && i.owners === undefined && !i.ownersError
-      );
+      // Guard: if owner-detection is enabled and any PDF still has owners === undefined (and no
+      // error), extraction is in progress. When the toggle is off, owners stays undefined forever
+      // by design and must not block generation.
+      const hasPendingExtraction =
+        ownersDetectionEnabled &&
+        items.some((i) => i.type === "pdf" && i.owners === undefined && !i.ownersError);
       if (hasPendingExtraction) {
         set({ statusMessage: strings.status.ownersNotReady });
         return;

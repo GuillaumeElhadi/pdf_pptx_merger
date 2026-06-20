@@ -155,13 +155,27 @@ describe("generate — Z : aucun déclencheur", () => {
   it("ne génère pas si l'extraction des propriétaires est en cours (owners === undefined)", async () => {
     // Item sans owners ni ownersError = extraction toujours en cours
     const pendingItem: PdfItem = { id: "p", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
-    useMergeStore.setState({ items: [pendingItem] });
+    useMergeStore.setState({ items: [pendingItem], ownersDetectionEnabled: true });
 
     await useMergeStore.getState().generate();
 
     expect(Bridge.pickSaveLocation).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
     expect(useMergeStore.getState().statusMessage).toBe(strings.status.ownersNotReady);
+  });
+
+  it("génère normalement si owners === undefined mais que le toggle propriétaires est désactivé", async () => {
+    const mergedDoc = makeMergedDoc();
+    vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1) as any);
+    vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
+    const untouchedItem: PdfItem = { id: "u", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [untouchedItem], ownersDetectionEnabled: false });
+
+    await useMergeStore.getState().generate();
+
+    expect(writeFile).toHaveBeenCalled();
+    expect(useMergeStore.getState().statusMessage).not.toBe(strings.status.ownersNotReady);
   });
 
   it("génère normalement si l'extraction a échoué (ownersError défini, owners undefined)", async () => {
