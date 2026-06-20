@@ -55,6 +55,24 @@ export async function ocrPage(
   strategy: "crop" | "detect" | "full",
   rotation: Rotation = 0
 ): Promise<string> {
+  const { text } = await recognizePage(page, strategy, rotation);
+  return text;
+}
+
+/**
+ * Same as `ocrPage` but also exposes Tesseract's mean word confidence (0-100).
+ *
+ * Confidence is a far more reliable orientation signal than raw character count:
+ * a page OCR'd at a wrong rotation can still produce a high alphanumeric count
+ * (Tesseract still matches plenty of Latin-shaped glyph fragments in upside-down
+ * or mirrored text), but its per-word confidence is consistently much lower than
+ * the correct orientation's.
+ */
+async function recognizePage(
+  page: PDFPageProxy,
+  strategy: "crop" | "detect" | "full",
+  rotation: Rotation = 0
+): Promise<{ text: string; confidence: number }> {
   const viewport = page.getViewport({ scale: 1.5, rotation });
   const width = Math.floor(viewport.width);
   const fullHeight = Math.floor(viewport.height);
@@ -113,10 +131,10 @@ export async function ocrPage(
         ? { rectangle: { left: leftSkip, top: 0, width: width - leftSkip, height } }
         : undefined;
     const {
-      data: { text },
+      data: { text, confidence },
     } = await worker.recognize(dataUrl, recognizeOptions);
-    console.info("[ocrPage] recognize OK, chars:", text.length);
-    return text;
+    console.info("[ocrPage] recognize OK, chars:", text.length, "confidence:", confidence);
+    return { text, confidence };
   } catch (e) {
     console.error("[ocrPage] recognize FAILED:", String(e));
     throw e;
@@ -142,19 +160,21 @@ export async function ocrPageWithAutoRotation(
   validate?: (text: string) => boolean
 ): Promise<{ text: string; rotationCorrection: Rotation }> {
   let bestRotation: Rotation = 0;
-  let bestScore = -1;
+  let bestConfidence = -1;
 
   for (const rotation of [0, 90, 180, 270] as Rotation[]) {
-    const text = await ocrPage(page, "crop", rotation);
+    const { text, confidence } = await recognizePage(page, "crop", rotation);
     const isValid = validate ? validate(text) : countAlphanumeric(text) >= 15;
 
     if (isValid) {
       return { text, rotationCorrection: rotation };
     }
 
-    const score = countAlphanumeric(text);
-    if (score > bestScore) {
-      bestScore = score;
+    // Confidence — not raw alphanumeric count — picks the fallback rotation: a wrong
+    // orientation can still match plenty of Latin-shaped glyph fragments and out-count
+    // the correct one, but its per-word confidence is reliably lower.
+    if (confidence > bestConfidence) {
+      bestConfidence = confidence;
       bestRotation = rotation;
     }
   }
@@ -164,10 +184,16 @@ export async function ocrPageWithAutoRotation(
 
 /**
  * Detects the reading orientation of a scanned (image-only) page by trying four
- * canvas rotations and returning the one that produces the most alphanumeric text.
+ * canvas rotations and returning the one with the highest OCR confidence among
+ * those with enough recognized text to be a plausible reading (not noise).
  *
  * Uses the "detect" crop strategy (top 50%, full width) which is more reliable than
  * the owner-specific crop (top 35%, left-33%-skipped) for general rotation detection.
+ *
+ * Picking by confidence rather than raw alphanumeric count matters: a wrong
+ * orientation can still match plenty of Latin-shaped glyph fragments (upside-down or
+ * mirrored text still "looks like" letters to Tesseract) and out-count the correct
+ * orientation, while its per-word confidence stays much lower.
  *
  * Returns 0 when the page appears to already be correctly oriented OR when no rotation
  * produces enough text to determine orientation reliably (sparse / blank pages).
@@ -178,20 +204,22 @@ export async function detectPageRotation(page: PDFPageProxy): Promise<Rotation> 
   const DETECTION_THRESHOLD = 25;
 
   let bestRotation: Rotation = 0;
-  let bestScore = -1;
+  let bestConfidence = -1;
+  let anyPassed = false;
 
   for (const rotation of [0, 90, 180, 270] as Rotation[]) {
-    const text = await ocrPage(page, "detect", rotation);
-    const score = countAlphanumeric(text);
+    const { text, confidence } = await recognizePage(page, "detect", rotation);
+    if (countAlphanumeric(text) < DETECTION_THRESHOLD) continue;
 
-    if (score > bestScore) {
-      bestScore = score;
+    anyPassed = true;
+    if (confidence > bestConfidence) {
+      bestConfidence = confidence;
       bestRotation = rotation;
     }
   }
 
-  // If the winning rotation has insufficient text (blank/sparse page), assume correct.
-  if (bestScore < DETECTION_THRESHOLD) return 0;
+  // No rotation produced enough text to judge orientation (blank/sparse page).
+  if (!anyPassed) return 0;
 
   return bestRotation;
 }

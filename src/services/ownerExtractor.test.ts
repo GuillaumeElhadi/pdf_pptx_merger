@@ -634,7 +634,7 @@ function rotatedItem(str: string, y: number, angleDeg: number) {
 }
 
 describe("extractOwners — rotation detection from text transforms", () => {
-  it("stores correction=90 when text items are 90° CW (transform angle −90°)", async () => {
+  it("stores correction=270 when text items are 90° CW (transform angle −90°)", async () => {
     mockDocument([
       {
         width: 595,
@@ -649,10 +649,10 @@ describe("extractOwners — rotation detection from text transforms", () => {
       },
     ]);
     const result = await extractOwners("/doc.pdf");
-    expect(result.pageRotationCorrections.get(1)).toBe(90);
+    expect(result.pageRotationCorrections.get(1)).toBe(270);
   });
 
-  it("stores correction=270 when text items are 90° CCW (transform angle +90°)", async () => {
+  it("stores correction=90 when text items are 90° CCW (transform angle +90°)", async () => {
     mockDocument([
       {
         width: 595,
@@ -667,7 +667,7 @@ describe("extractOwners — rotation detection from text transforms", () => {
       },
     ]);
     const result = await extractOwners("/doc.pdf");
-    expect(result.pageRotationCorrections.get(1)).toBe(270);
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
   });
 
   it("stores correction=180 when text items are upside down (transform angle 180°)", async () => {
@@ -763,7 +763,7 @@ describe("extractOwners — rotation detection from text transforms", () => {
     ]);
     const result = await extractOwners("/doc.pdf");
     expect(result.pageRotationCorrections.has(1)).toBe(false);
-    expect(result.pageRotationCorrections.get(2)).toBe(90);
+    expect(result.pageRotationCorrections.get(2)).toBe(270);
   });
 });
 
@@ -771,7 +771,7 @@ describe("extractOwners — rotated embedded text falls back to OCR", () => {
   it("uses OCR when hasText=true but text is 90°CW-rotated and parseOwner fails", async () => {
     // Both items share y=500 → buildLines() merges them into one line → matchOwner fails.
     // transform[0]=0, transform[1]=-12 → atan2(-12,0) = -90° → bucketed to 270° →
-    // correction = (360-270)%360 = 90 (90° CW rotation detected).
+    // correction = 270 (90° CW rotation detected; /Rotate=270 undoes it).
     vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
       text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
       rotationCorrection: 90,
@@ -796,7 +796,7 @@ describe("extractOwners — rotated embedded text falls back to OCR", () => {
     expect(result.pageOwners.get(1)).toEqual({ code: "0000001", name: "IMMO CARREFOUR" });
     expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
     expect(ocrPage).not.toHaveBeenCalled();
-    expect(result.pageRotationCorrections.get(1)).toBe(90);
+    expect(result.pageRotationCorrections.get(1)).toBe(270);
   });
 
   it("escalates to ocrPage('full') when crop OCR also fails on rotated page", async () => {
@@ -823,8 +823,8 @@ describe("extractOwners — rotated embedded text falls back to OCR", () => {
 
     expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
     expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
-    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "full", 90);
-    expect(result.pageRotationCorrections.get(1)).toBe(90);
+    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "full", 270);
+    expect(result.pageRotationCorrections.get(1)).toBe(270);
   });
 
   it("does NOT call OCR when hasText=true but parseOwner already succeeds", async () => {
