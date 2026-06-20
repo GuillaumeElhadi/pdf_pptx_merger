@@ -110,6 +110,8 @@ function resetStore() {
     progress: null,
     lastOutputPath: null,
     lastOutputDir: null,
+    ownersDetectionEnabled: false,
+    rotationDetectionEnabled: false,
   });
 }
 

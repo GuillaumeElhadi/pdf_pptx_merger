@@ -91,6 +91,12 @@ interface MergeStore {
   rotateItems: (ids: string[]) => void;
   generate: () => Promise<void>;
   clearError: () => void;
+
+  // ── Detection toggles ─────────────────────────────────────────────────────
+  ownersDetectionEnabled: boolean;
+  rotationDetectionEnabled: boolean;
+  setOwnersDetectionEnabled: (enabled: boolean) => void;
+  setRotationDetectionEnabled: (enabled: boolean) => void;
 }
 
 export const useMergeStore = create<MergeStore>((set, get) => ({
@@ -102,6 +108,8 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
   progress: null,
   lastOutputPath: null,
   lastOutputDir: null,
+  ownersDetectionEnabled: false,
+  rotationDetectionEnabled: false,
 
   setSelectedIds: (ids) => set({ selectedIds: ids }),
   clearSelection: () => set({ selectedIds: new Set() }),
@@ -617,4 +625,14 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
 
   // ── clearError ────────────────────────────────────────────────────────────
   clearError: () => set({ status: "idle", statusMessage: strings.status.ready }),
+
+  // ── Detection toggles ─────────────────────────────────────────────────────
+  setOwnersDetectionEnabled: (enabled) => {
+    logger.action("setOwnersDetectionEnabled", { enabled });
+    set({ ownersDetectionEnabled: enabled });
+  },
+  setRotationDetectionEnabled: (enabled) => {
+    logger.action("setRotationDetectionEnabled", { enabled });
+    set({ rotationDetectionEnabled: enabled });
+  },
 }));

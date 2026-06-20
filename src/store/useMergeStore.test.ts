@@ -46,6 +46,8 @@ function resetStore() {
     statusMessage: "Prêt.",
     progress: null,
     lastOutputPath: null,
+    ownersDetectionEnabled: false,
+    rotationDetectionEnabled: false,
   });
 }
 
@@ -196,6 +198,26 @@ describe("useMergeStore — clearError", () => {
     const { status, statusMessage } = useMergeStore.getState();
     expect(status).toBe("idle");
     expect(statusMessage).toBe("Prêt.");
+  });
+});
+
+describe("useMergeStore — toggles de détection", () => {
+  beforeEach(resetStore);
+
+  it("démarre avec les deux toggles désactivés", () => {
+    const s = useMergeStore.getState();
+    expect(s.ownersDetectionEnabled).toBe(false);
+    expect(s.rotationDetectionEnabled).toBe(false);
+  });
+
+  it("setOwnersDetectionEnabled met à jour le state", () => {
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+    expect(useMergeStore.getState().ownersDetectionEnabled).toBe(true);
+  });
+
+  it("setRotationDetectionEnabled met à jour le state", () => {
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+    expect(useMergeStore.getState().rotationDetectionEnabled).toBe(true);
   });
 });
 
