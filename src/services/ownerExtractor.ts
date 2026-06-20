@@ -197,7 +197,12 @@ function detectTextRotation(items: unknown[]): Rotation {
 
   if (dominant === 0 || count / total < 0.5) return 0;
 
-  return ((360 - dominant) % 360) as Rotation;
+  // The /Rotate page attribute is a clockwise display rotation. A text item's
+  // baseline transform angle `dominant` is measured counter-clockwise (standard
+  // math convention, since PDF user space is y-up). Rotating the page clockwise
+  // by `dominant` degrees brings that baseline back to 0° (upright), so the
+  // correction is `dominant` itself — NOT its 360-complement.
+  return dominant as Rotation;
 }
 
 /** Maximum time to wait for pdfjs to load a single PDF before giving up. */
