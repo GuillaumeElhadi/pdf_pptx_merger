@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.16.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.16.0...v3.16.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* improve ZoomThumb positioning for different rotation angles ([#57](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/57)) ([76d4dde](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/76d4dde11eb398367653c1d21f75b4b1c3daab79))
+
 ## [3.16.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.15.0...v3.16.0) (2026-06-20)
 
 
