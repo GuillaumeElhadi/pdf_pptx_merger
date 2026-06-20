@@ -22,13 +22,10 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
     id: item.id,
   });
 
-  // Combine user-applied rotation with auto-detected page correction for display.
-  // pageCorrection values are produced by detectTextRotation / ocrPageWithAutoRotation
-  // as (360 − dominant) % 360 — which is directly usable as CSS CW rotation degrees.
-  // No convention conversion is needed: CSS rotate(pageCorrection deg) makes the
-  // corrected text read left-to-right.
+  // Page 1 auto-detected correction (kept for the ↺ badge).
+  // When autoRotated is true, the correction is already baked into item.pdfPath (a temp
+  // file with the correct /Rotate), so we must NOT pass it to renderPage again.
   const pageCorrection = (item.pageRotationCorrections?.get(1) ?? 0) as Rotation;
-  const displayRotation = ((item.rotation + pageCorrection) % 360) as Rotation;
 
   const rowStyle: React.CSSProperties = {
     ...styles.row,
@@ -52,16 +49,17 @@ export function PdfItemRow({ item, selected, onSelect, isGroupFollower }: Props)
       {isGroupFollower && <div style={styles.followerBar} />}
       <span style={styles.handle}>⠿</span>
       <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ transform: `rotate(${displayRotation}deg)`, transition: "transform 0.2s" }}>
+        <div style={{ transform: `rotate(${item.rotation}deg)`, transition: "transform 0.2s" }}>
           <ZoomThumb
             pdfPath={item.pdfPath}
             pageIndex={0}
             alt={basename(item.pdfPath)}
-            rotation={displayRotation}
-            rotationCorrection={0}
+            rotation={item.rotation}
+            rotationCorrection={item.autoRotated ? 0 : pageCorrection}
           />
         </div>
         {item.rotation !== 0 && <span style={styles.rotationBadge}>{item.rotation}°</span>}
+        {pageCorrection !== 0 && <span style={styles.autoRotationBadge}>↺</span>}
       </div>
       <span style={styles.nameBlock}>
         <span style={styles.name}>{basename(item.pdfPath)}</span>
@@ -159,6 +157,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "1px 3px",
     borderRadius: 3,
     pointerEvents: "none" as const,
+  },
+  autoRotationBadge: {
+    position: "absolute" as const,
+    top: 2,
+    left: 2,
+    background: "var(--accent)",
+    color: "#fff",
+    fontSize: 9,
+    padding: "1px 3px",
+    borderRadius: 3,
+    pointerEvents: "none" as const,
+    opacity: 0.85,
   },
   nameBlock: {
     flex: 1,

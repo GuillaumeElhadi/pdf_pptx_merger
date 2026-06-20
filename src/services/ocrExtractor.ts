@@ -44,19 +44,26 @@ async function ensureWorker(): Promise<Worker> {
 /**
  * Renders a pdfjs page to canvas and returns the OCR text.
  *
- * "crop"  — top 35% of the page only (~0.5s). Use first: the owner label
- *           always appears in the top third of the page in known documents.
- * "full"  — entire page (~2-3s). Fallback when crop finds no owner.
+ * "crop"   — top 35%, left 33% skipped (~0.5s). Owner detection: the owner label
+ *            appears in the top-right of the page in known documents.
+ * "detect" — top 50%, no left skip (~0.6s). Rotation detection: wider crop to
+ *            maximise text coverage for alphanumeric counting.
+ * "full"   — entire page (~2-3s). Fallback when crop finds no owner.
  */
 export async function ocrPage(
   page: PDFPageProxy,
-  strategy: "crop" | "full",
+  strategy: "crop" | "detect" | "full",
   rotation: Rotation = 0
 ): Promise<string> {
   const viewport = page.getViewport({ scale: 1.5, rotation });
   const width = Math.floor(viewport.width);
   const fullHeight = Math.floor(viewport.height);
-  const height = strategy === "crop" ? Math.floor(fullHeight * 0.35) : fullHeight;
+  const height =
+    strategy === "crop"
+      ? Math.floor(fullHeight * 0.35)
+      : strategy === "detect"
+        ? Math.floor(fullHeight * 0.5)
+        : fullHeight;
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -94,11 +101,12 @@ export async function ocrPage(
   }
 
   try {
-    // For the crop strategy, skip the leftmost 33% to exclude the management
+    // For the owner crop strategy, skip the leftmost 33% to exclude the management
     // company left column that shares Y positions with center/right columns,
     // causing Tesseract to merge their text onto single lines and breaking
     // pattern matching (e.g. "D 403 123 Du 01/01/2025 au..." instead of
     // "Du 01/01/2025 au..." alone on its line).
+    // The "detect" strategy uses the full width — no left skip.
     const leftSkip = strategy === "crop" ? Math.floor(width * 0.33) : 0;
     const recognizeOptions =
       leftSkip > 0
@@ -152,4 +160,38 @@ export async function ocrPageWithAutoRotation(
   }
 
   return { text: await ocrPage(page, "full", bestRotation), rotationCorrection: bestRotation };
+}
+
+/**
+ * Detects the reading orientation of a scanned (image-only) page by trying four
+ * canvas rotations and returning the one that produces the most alphanumeric text.
+ *
+ * Uses the "detect" crop strategy (top 50%, full width) which is more reliable than
+ * the owner-specific crop (top 35%, left-33%-skipped) for general rotation detection.
+ *
+ * Returns 0 when the page appears to already be correctly oriented OR when no rotation
+ * produces enough text to determine orientation reliably (sparse / blank pages).
+ */
+export async function detectPageRotation(page: PDFPageProxy): Promise<Rotation> {
+  // Threshold: enough characters to be confident about orientation.
+  // Typical text: hundreds of chars; we just need to distinguish "readable" from noise.
+  const DETECTION_THRESHOLD = 25;
+
+  let bestRotation: Rotation = 0;
+  let bestScore = -1;
+
+  for (const rotation of [0, 90, 180, 270] as Rotation[]) {
+    const text = await ocrPage(page, "detect", rotation);
+    const score = countAlphanumeric(text);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestRotation = rotation;
+    }
+  }
+
+  // If the winning rotation has insufficient text (blank/sparse page), assume correct.
+  if (bestScore < DETECTION_THRESHOLD) return 0;
+
+  return bestRotation;
 }

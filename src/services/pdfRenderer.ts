@@ -33,9 +33,14 @@ export async function renderPage(
   try {
     const page = await pdf.getPage(pageIndex + 1); // pdfjs is 1-based
 
-    const viewport = page.getViewport({ scale: 1, rotation: rotationCorrection });
+    // pdfjs's `rotation` param is absolute, not additive — passing it (even 0)
+    // overrides the page's own /Rotate. Add it to page.rotate to get true
+    // additive behaviour and preserve any inherent rotation already baked in.
+    const totalRotation = (((page.rotate ?? 0) + rotationCorrection) % 360) as Rotation;
+
+    const viewport = page.getViewport({ scale: 1, rotation: totalRotation });
     const scale = width / viewport.width;
-    const scaled = page.getViewport({ scale, rotation: rotationCorrection });
+    const scaled = page.getViewport({ scale, rotation: totalRotation });
 
     const canvas = new OffscreenCanvas(Math.floor(scaled.width), Math.floor(scaled.height));
     const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;

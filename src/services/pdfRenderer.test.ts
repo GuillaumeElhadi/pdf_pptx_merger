@@ -30,8 +30,9 @@ const freshPath = () => `/render-test-${++pathCounter}.pdf`;
  * Crée une page pdfjs simulée avec des dimensions naturelles données.
  * getViewport est appelé deux fois : d'abord à scale=1 (mesure), puis au scale final.
  */
-function makePdfPage(naturalWidth = 200, naturalHeight = 300) {
+function makePdfPage(naturalWidth = 200, naturalHeight = 300, rotate = 0) {
   return {
+    rotate,
     getViewport: vi.fn().mockImplementation(({ scale = 1 }: { scale: number }) => ({
       width: naturalWidth * scale,
       height: naturalHeight * scale,
@@ -257,6 +258,22 @@ describe("renderPage — rotationCorrection", () => {
     setupPdfjs(makePdfPage());
     await renderPage(path, 0, 160, 90);
     expect(pdfjsLib.getDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it("rotationCorrection=0 préserve le /Rotate inhérent de la page (pas d'écrasement à 0°)", async () => {
+    // Régression : la page a déjà un /Rotate=90 baked-in (ex: correction auto-rotation
+    // appliquée au fichier). rotationCorrection=0 ne doit PAS forcer le viewport à 0°.
+    const page = makePdfPage(200, 300, 90);
+    setupPdfjs(page);
+    await renderPage(freshPath(), 0, 160, 0);
+    expect(page.getViewport).toHaveBeenCalledWith(expect.objectContaining({ rotation: 90 }));
+  });
+
+  it("rotationCorrection est additif par rapport au /Rotate inhérent de la page", async () => {
+    const page = makePdfPage(200, 300, 90);
+    setupPdfjs(page);
+    await renderPage(freshPath(), 0, 160, 90);
+    expect(page.getViewport).toHaveBeenCalledWith(expect.objectContaining({ rotation: 180 }));
   });
 
   it("même chemin/page/rotation → le cache retourne la même URL sans re-render", async () => {
