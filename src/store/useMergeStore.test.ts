@@ -253,6 +253,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("les items sont dans le store dès que l'extraction commence", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     let itemCountWhenExtractionStarts = -1;
     vi.mocked(extractOwners).mockImplementation(async () => {
       itemCountWhenExtractionStarts = useMergeStore.getState().items.length;
@@ -265,6 +266,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("peuple owners une fois l'extraction terminée", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const detected = [{ code: "0000001", name: "IMMO CARREFOUR" }];
     vi.mocked(extractOwners).mockResolvedValue({
       owners: detected,
@@ -280,6 +282,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("peuple pageOwners une fois l'extraction terminée", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const pageOwnersMap = new Map([[1, { code: "0000001", name: "OWNER A" }]]);
     vi.mocked(extractOwners).mockResolvedValue({
       owners: [{ code: "0000001", name: "OWNER A" }],
@@ -295,6 +298,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("laisse owners undefined et peuple ownersError si extractOwners lève une erreur", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     vi.mocked(extractOwners).mockRejectedValue(new Error("échec extraction"));
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -306,6 +310,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("status est 'extracting' pendant l'extraction", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     let statusDuringExtraction: string | undefined;
     vi.mocked(extractOwners).mockImplementation(async () => {
       statusDuringExtraction = useMergeStore.getState().status;
@@ -318,6 +323,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("les PDFs sont extraits séquentiellement dans l'ordre", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const callOrder: string[] = [];
     vi.mocked(extractOwners).mockImplementation(async (path) => {
       callOrder.push(path as string);
@@ -330,6 +336,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("status est 'idle' et progress est null après l'extraction complète", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     vi.mocked(extractOwners).mockResolvedValue({
       owners: [],
       pageOwners: new Map(),
@@ -344,6 +351,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("l'extraction continue sur les PDFs suivants si l'un d'eux échoue", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const detected = [{ code: "0000001", name: "OWNER A" }];
     vi.mocked(extractOwners)
       .mockResolvedValueOnce({
@@ -370,6 +378,85 @@ describe("useMergeStore — addPdfs", () => {
     expect(pdfItems[2].owners).toEqual(detected);
     expect(status).toBe("idle");
     expect(progress).toBeNull();
+  });
+
+  it("n'appelle pas extractOwners quand les deux toggles sont désactivés (comportement par défaut)", async () => {
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).not.toHaveBeenCalled();
+    const { items, status, progress } = useMergeStore.getState();
+    expect(items).toHaveLength(1);
+    expect(status).toBe("idle");
+    expect(progress).toBeNull();
+  });
+
+  it("appelle extractOwners avec detectOwners=true, detectRotation=false quand seul le toggle propriétaires est actif", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true, rotationDetectionEnabled: false });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: true,
+      detectRotation: false,
+    });
+  });
+
+  it("appelle extractOwners avec detectOwners=false, detectRotation=true quand seul le toggle rotation est actif", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: false, rotationDetectionEnabled: true });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: false,
+      detectRotation: true,
+    });
+  });
+
+  it("appelle extractOwners avec les deux flags à true quand les deux toggles sont actifs", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true, rotationDetectionEnabled: true });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: true,
+      detectRotation: true,
+    });
+  });
+
+  it("ne renseigne pas pageRotationCorrections quand seul le toggle propriétaires est actif", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true, rotationDetectionEnabled: false });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [{ code: "0000001", name: "OWNER A" }],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    const item = useMergeStore.getState().items[0] as PdfItem;
+    expect(item.owners).toEqual([{ code: "0000001", name: "OWNER A" }]);
+    expect(item.pageRotationCorrections).toBeUndefined();
   });
 });
 
