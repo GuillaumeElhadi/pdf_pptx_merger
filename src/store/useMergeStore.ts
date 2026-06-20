@@ -666,10 +666,25 @@ export const useMergeStore = create<MergeStore>((set, get) => {
     setOwnersDetectionEnabled: (enabled) => {
       logger.action("setOwnersDetectionEnabled", { enabled });
       set({ ownersDetectionEnabled: enabled });
+      if (!enabled) return;
+      const pending = get().items.filter(
+        (i): i is PdfItem => i.type === "pdf" && i.owners === undefined && !i.ownersError
+      );
+      if (pending.length > 0) {
+        void processPdfItems(pending, { detectOwners: true, detectRotation: false });
+      }
     },
     setRotationDetectionEnabled: (enabled) => {
       logger.action("setRotationDetectionEnabled", { enabled });
       set({ rotationDetectionEnabled: enabled });
+      if (!enabled) return;
+      const pending = get().items.filter(
+        (i): i is PdfItem =>
+          i.type === "pdf" && i.pageRotationCorrections === undefined && !i.ownersError
+      );
+      if (pending.length > 0) {
+        void processPdfItems(pending, { detectOwners: false, detectRotation: true });
+      }
     },
   };
 });

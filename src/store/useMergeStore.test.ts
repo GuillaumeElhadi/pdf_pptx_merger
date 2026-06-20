@@ -219,6 +219,101 @@ describe("useMergeStore — toggles de détection", () => {
     useMergeStore.getState().setRotationDetectionEnabled(true);
     expect(useMergeStore.getState().rotationDetectionEnabled).toBe(true);
   });
+
+  it("setOwnersDetectionEnabled(true) relance extractOwners sur les PDFs sans owners détectés", async () => {
+    const untouched: PdfItem = { id: "a", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [untouched] });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [{ code: "0000001", name: "OWNER A" }],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[0] as PdfItem).owners).toBeDefined();
+    });
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: true,
+      detectRotation: false,
+    });
+  });
+
+  it("setOwnersDetectionEnabled(true) ignore les PDFs déjà traités (owners défini)", async () => {
+    const already: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      owners: [],
+      pageOwners: new Map(),
+    };
+    useMergeStore.setState({ items: [already] });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("setOwnersDetectionEnabled(true) ignore les PDFs déjà en échec (ownersError défini)", async () => {
+    const failed: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      ownersError: "timeout",
+    };
+    useMergeStore.setState({ items: [failed] });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("setRotationDetectionEnabled(true) relance extractOwners sur les PDFs sans correction de rotation détectée", async () => {
+    const untouched: PdfItem = { id: "a", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [untouched] });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map([[1, 90]]),
+    });
+
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[0] as PdfItem).pageRotationCorrections).toBeDefined();
+    });
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: false,
+      detectRotation: true,
+    });
+  });
+
+  it("setRotationDetectionEnabled(true) ignore les PDFs déjà traités (pageRotationCorrections défini)", async () => {
+    const already: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      pageRotationCorrections: new Map(),
+    };
+    useMergeStore.setState({ items: [already] });
+
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("setOwnersDetectionEnabled(false) n'appelle pas extractOwners", () => {
+    const untouched: PdfItem = { id: "a", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [untouched], ownersDetectionEnabled: true });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(false);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
 });
 
 describe("useMergeStore — addPdfs", () => {
