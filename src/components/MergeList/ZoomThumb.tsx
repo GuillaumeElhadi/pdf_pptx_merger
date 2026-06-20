@@ -4,8 +4,8 @@ import { useThumbnail } from "../../hooks/useThumbnail";
 import { useDragActive } from "./MergeList";
 import type { Rotation } from "../../types";
 
-const ZOOM_W = 480;
-const ZOOM_H = 360;
+const ZOOM_W = 800;
+const ZOOM_H = 600;
 const THUMB_W = 48;
 const THUMB_H = 36;
 
