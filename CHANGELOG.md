@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.15.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.14.0...v3.15.0) (2026-06-20)
+
+
+### Features
+
+* increase thumbnail zoom dimensions to enhance image clarity ([#53](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/53)) ([f1e6ec3](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/f1e6ec399cf885797d1966b2d22b70e727b20d56))
+
 ## [3.14.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.13.0...v3.14.0) (2026-06-20)
 
 
