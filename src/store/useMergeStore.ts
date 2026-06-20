@@ -20,6 +20,41 @@ import type {
 
 const PPTX_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#06b6d4", "#ef4444"];
 
+/**
+ * Applies the page-1 rotation correction to every page of a PDF and saves the
+ * result to the app temp directory.  All pages share the same orientation (the
+ * user confirmed that page 1 is representative for the whole document), so the
+ * correction detected for page 1 is applied uniformly.
+ *
+ * Returns the path of the corrected temp file, or null when no correction is needed.
+ */
+async function bakeRotationCorrections(
+  pdfPath: string,
+  pageRotationCorrections: Map<number, Rotation>,
+  tempDir: string
+): Promise<string | null> {
+  const correction = pageRotationCorrections.get(1) ?? 0;
+  if (correction === 0) return null;
+
+  const res = await fetch(convertFileSrc(pdfPath));
+  const bytes = await res.arrayBuffer();
+  const doc = await PDFDocument.load(bytes);
+
+  for (const page of doc.getPages()) {
+    const newAngle = (page.getRotation().angle + correction) % 360;
+    page.setRotation(degrees(newAngle));
+  }
+
+  const saved = await doc.save();
+  const filename = pdfPath.split(/[\\/]/).pop() ?? "rotated.pdf";
+  const normalizedDir = tempDir.replace(/[/\\]$/, "");
+  const sep = normalizedDir.includes("/") ? "/" : "\\";
+  const tempPath = `${normalizedDir}${sep}rotated_${Date.now()}_${filename}`;
+  await writeFile(tempPath, new Uint8Array(saved));
+
+  return tempPath;
+}
+
 function ownerToSnakeCase(name: string): string {
   return name
     .toLowerCase()
@@ -147,6 +182,8 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
       progress: 0,
     }));
 
+    const tempDir = await Bridge.getTempDir();
+
     let done = 0;
     let failedCount = 0;
     const allFoundOwners = new Map<string, OwnerInfo>();
@@ -160,13 +197,42 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
           for (const o of owners) {
             if (!allFoundOwners.has(o.name)) allFoundOwners.set(o.name, o);
           }
+
+          let effectivePdfPath = item.pdfPath;
+          let autoRotated = false;
+          if (pageRotationCorrections.size > 0) {
+            try {
+              const correctedPath = await bakeRotationCorrections(
+                item.pdfPath,
+                pageRotationCorrections,
+                tempDir
+              );
+              if (correctedPath) {
+                effectivePdfPath = correctedPath;
+                autoRotated = true;
+                logger.info("addPdfs:bakeRotation", `rotated temp file → ${correctedPath}`);
+              }
+            } catch (bakeErr) {
+              logger.warn("addPdfs:bakeRotation", `failed for ${filename}: ${String(bakeErr)}`);
+            }
+          }
+
           logger.info(
             "addPdfs:extractOwners",
             `done  ${done}/${newItems.length} — ${filename} (${owners.length} owner${owners.length !== 1 ? "s" : ""})`
           );
           set((s) => ({
             items: s.items.map((i) =>
-              i.id === item.id ? { ...i, owners, pageOwners, pageRotationCorrections } : i
+              i.id === item.id
+                ? {
+                    ...i,
+                    pdfPath: effectivePdfPath,
+                    owners,
+                    pageOwners,
+                    pageRotationCorrections,
+                    autoRotated,
+                  }
+                : i
             ),
             progress: done / newItems.length,
             statusMessage: strings.status.extractingOwners(done, newItems.length),
@@ -397,14 +463,29 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
               if (!item.owners || item.owners.length === 0) {
                 // No owner detected → include all pages in every output
                 const allIndices = doc.getPageIndices();
+                // Capture effective source rotations before copying (pdf-lib resolves
+                // inherited /Rotate; copyPages does not propagate it into the new doc).
+                const sourceRotations = allIndices.map(
+                  (idx) => doc.getPage(idx).getRotation().angle
+                );
                 const pages = await merged.copyPages(doc, allIndices);
                 pages.forEach((p: PDFPage, i: number) => {
                   const pageNum = allIndices[i] + 1;
-                  const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
-                  if (item.rotation !== 0 || correction !== 0) {
-                    p.setRotation(
-                      degrees((p.getRotation().angle + item.rotation + correction) % 360)
-                    );
+                  // When autoRotated, correction is already baked into pdfPath (temp file).
+                  // Use sourceRotations[i] from the temp file which already holds the corrected /Rotate.
+                  const correction = item.autoRotated
+                    ? 0
+                    : (item.pageRotationCorrections?.get(pageNum) ?? 0);
+                  const totalRotation =
+                    correction !== 0
+                      ? (correction + item.rotation) % 360
+                      : (sourceRotations[i] + item.rotation) % 360;
+                  logger.info(
+                    "generate:rotate",
+                    `page ${pageNum}: src=${sourceRotations[i]}° auto=${correction}° user=${item.rotation}° → ${totalRotation}°`
+                  );
+                  if (totalRotation !== 0 || sourceRotations[i] !== 0) {
+                    p.setRotation(degrees(totalRotation));
                   }
                   merged.addPage(p);
                 });
@@ -419,14 +500,25 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
                   }
                 }
                 if (includedIndices.length > 0) {
+                  const sourceRotations = includedIndices.map(
+                    (idx) => doc.getPage(idx).getRotation().angle
+                  );
                   const pages = await merged.copyPages(doc, includedIndices);
                   pages.forEach((p: PDFPage, i: number) => {
                     const pageNum = includedIndices[i] + 1;
-                    const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
-                    if (item.rotation !== 0 || correction !== 0) {
-                      p.setRotation(
-                        degrees((p.getRotation().angle + item.rotation + correction) % 360)
-                      );
+                    const correction = item.autoRotated
+                      ? 0
+                      : (item.pageRotationCorrections?.get(pageNum) ?? 0);
+                    const totalRotation =
+                      correction !== 0
+                        ? (correction + item.rotation) % 360
+                        : (sourceRotations[i] + item.rotation) % 360;
+                    logger.info(
+                      "generate:rotate",
+                      `page ${pageNum}: src=${sourceRotations[i]}° auto=${correction}° user=${item.rotation}° → ${totalRotation}°`
+                    );
+                    if (totalRotation !== 0 || sourceRotations[i] !== 0) {
+                      p.setRotation(degrees(totalRotation));
                     }
                     merged.addPage(p);
                   });
@@ -468,12 +560,23 @@ export const useMergeStore = create<MergeStore>((set, get) => ({
           if (item.type === "pdf") {
             const doc = await loadOrCacheDoc(item.pdfPath);
             const indices = doc.getPageIndices();
+            const sourceRotations = indices.map((idx) => doc.getPage(idx).getRotation().angle);
             const pages = await merged.copyPages(doc, indices);
             pages.forEach((p: PDFPage, i: number) => {
               const pageNum = indices[i] + 1;
-              const correction = item.pageRotationCorrections?.get(pageNum) ?? 0;
-              if (item.rotation !== 0 || correction !== 0) {
-                p.setRotation(degrees((p.getRotation().angle + item.rotation + correction) % 360));
+              const correction = item.autoRotated
+                ? 0
+                : (item.pageRotationCorrections?.get(pageNum) ?? 0);
+              const totalRotation =
+                correction !== 0
+                  ? (correction + item.rotation) % 360
+                  : (sourceRotations[i] + item.rotation) % 360;
+              logger.info(
+                "generate:rotate",
+                `page ${pageNum}: src=${sourceRotations[i]}° auto=${correction}° user=${item.rotation}° → ${totalRotation}°`
+              );
+              if (totalRotation !== 0 || sourceRotations[i] !== 0) {
+                p.setRotation(degrees(totalRotation));
               }
               merged.addPage(p);
             });

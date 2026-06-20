@@ -1,6 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { ocrPage, ocrPageWithAutoRotation } from "./ocrExtractor";
+import { detectPageRotation, ocrPage, ocrPageWithAutoRotation } from "./ocrExtractor";
 import type { Rotation } from "../types";
 
 export interface OwnerInfo {
@@ -247,9 +247,14 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
           .map((l) => l.trim())
           .filter(Boolean);
 
+      console.info(
+        `[extractOwners] page ${pageNum}: hasText=${hasText} page.rotate=${page.rotate}`
+      );
+
       if (hasText) {
         owner = parseOwner(buildLines(content.items));
         const rotationCorrection = detectTextRotation(content.items);
+        console.info(`[extractOwners] page ${pageNum}: detectTextRotation=${rotationCorrection}°`);
         if (rotationCorrection !== 0) {
           pageRotationCorrections.set(pageNum, rotationCorrection);
           if (!owner) {
@@ -279,10 +284,17 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
           }
         }
       } else {
-        const { text: cropText, rotationCorrection } = await ocrPageWithAutoRotation(
-          page,
-          (text) => matchOwner(toLines(text)) !== null
+        // Only run OCR-based rotation detection for pages with no /Rotate metadata (i.e.
+        // page.rotate === 0). Pages that already have /Rotate set by the PDF creator are
+        // rendered correctly by pdfjs natively — applying an additional correction would
+        // compound or destroy the existing rotation (e.g. /Rotate:270 + detected 90° = 0°).
+        const rotationCorrection = (page.rotate ?? 0) === 0 ? await detectPageRotation(page) : 0;
+        console.info(
+          `[extractOwners] page ${pageNum}: detectPageRotation=${rotationCorrection}° (page.rotate=${page.rotate})`
         );
+
+        // Try to find the owner at the detected orientation.
+        const cropText = await ocrPage(page, "crop", rotationCorrection);
         owner = matchOwner(toLines(cropText));
         if (!owner) {
           const fullText = await ocrPage(page, "full", rotationCorrection);

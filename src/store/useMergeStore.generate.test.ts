@@ -76,10 +76,11 @@ function makePage(initialAngle = 0) {
  * Document source simulé.
  * PDFDocument.load est appelé exactement une fois par chemin unique (cache interne à generate).
  */
-function makeSourceDoc(pageCount: number) {
+function makeSourceDoc(pageCount: number, pageRotation = 0) {
   return {
     getPageCount: vi.fn(() => pageCount),
     getPageIndices: vi.fn(() => Array.from({ length: pageCount }, (_, i) => i)),
+    getPage: vi.fn(() => ({ getRotation: () => ({ angle: pageRotation }) })),
   };
 }
 
@@ -367,11 +368,11 @@ describe("generate — B : limites", () => {
   });
 
   it("rotation = 270 sur une page déjà à 90° → setRotation appelé avec 0 (bouclage modulo)", async () => {
-    const page = makePage(90); // page déjà à 90°
+    const page = makePage(0);
     const mergedDoc = makeMergedDoc();
     mergedDoc.copyPages.mockResolvedValue([page]);
     vi.mocked(PDFDocument.create).mockResolvedValue(mergedDoc as any);
-    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1) as any);
+    vi.mocked(PDFDocument.load).mockResolvedValue(makeSourceDoc(1, 90) as any);
     vi.mocked(Bridge.pickSaveLocation).mockResolvedValue("/out/result.pdf");
 
     useMergeStore.setState({ items: [{ ...makePdf("a"), rotation: 270 as const }] });
@@ -397,7 +398,7 @@ describe("generate — B : limites", () => {
     useMergeStore.setState({ items: [pdfItem] });
     await useMergeStore.getState().generate();
 
-    // (page.angle 0 + item.rotation 0 + correction 90) % 360 = 90
+    // correction(90) + item.rotation(0) = 90
     expect(page.setRotation).toHaveBeenCalledWith(90);
   });
 
@@ -417,7 +418,7 @@ describe("generate — B : limites", () => {
     useMergeStore.setState({ items: [pdfItem] });
     await useMergeStore.getState().generate();
 
-    // (0 + 90 + 90) % 360 = 180
+    // correction(90) + item.rotation(90) = 180
     expect(page.setRotation).toHaveBeenCalledWith(180);
   });
 

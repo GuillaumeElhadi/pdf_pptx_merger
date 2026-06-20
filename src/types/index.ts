@@ -22,6 +22,8 @@ export interface PdfItem {
   pageOwners?: Map<number, OwnerInfo>;
   /** 1-based page → rotation correction (degrees). Only pages needing non-zero correction. */
   pageRotationCorrections?: Map<number, Rotation>;
+  /** True when auto-detected rotation was baked into pdfPath (a temp file with corrected /Rotate). */
+  autoRotated?: boolean;
 }
 
 export interface PptxSource {
