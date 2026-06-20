@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.14.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.13.0...v3.14.0) (2026-06-20)
+
+
+### Features
+
+* implement auto-rotation detection and correction for PDF pages ([#51](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/51)) ([07fee71](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/07fee71fd68081f7cfd4cf26c0115597540b07b9))
+
 ## [3.13.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.12.4...v3.13.0) (2026-06-14)
 
 
