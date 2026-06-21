@@ -20,6 +20,8 @@ export function resetStore() {
     statusMessage: strings.status.ready,
     progress: null,
     lastOutputPath: null,
+    ownersDetectionEnabled: false,
+    rotationDetectionEnabled: false,
   });
 }
 

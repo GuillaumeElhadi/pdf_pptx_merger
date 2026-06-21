@@ -39,6 +39,13 @@ export interface ExtractionResult {
   pageRotationCorrections: Map<number, Rotation>;
 }
 
+export interface ExtractOwnersOptions {
+  detectOwners: boolean;
+  detectRotation: boolean;
+}
+
+const DEFAULT_EXTRACT_OPTIONS: ExtractOwnersOptions = { detectOwners: true, detectRotation: true };
+
 // Minimal shape we use from pdfjs TextItem
 interface PdfTextItem {
   str: string;
@@ -213,7 +220,10 @@ const LOAD_TIMEOUT_MS = 20_000;
  * Returns empty owners/pageOwners when no owner pattern is detected.
  * Throws if the PDF fails to load or doesn't load within LOAD_TIMEOUT_MS.
  */
-export async function extractOwners(pdfPath: string): Promise<ExtractionResult> {
+export async function extractOwners(
+  pdfPath: string,
+  options: ExtractOwnersOptions = DEFAULT_EXTRACT_OPTIONS
+): Promise<ExtractionResult> {
   const url = convertFileSrc(pdfPath);
   const loadTask = pdfjsLib.getDocument(url);
 
@@ -257,55 +267,60 @@ export async function extractOwners(pdfPath: string): Promise<ExtractionResult> 
       );
 
       if (hasText) {
-        owner = parseOwner(buildLines(content.items));
-        const rotationCorrection = detectTextRotation(content.items);
-        console.info(`[extractOwners] page ${pageNum}: detectTextRotation=${rotationCorrection}°`);
-        if (rotationCorrection !== 0) {
-          pageRotationCorrections.set(pageNum, rotationCorrection);
-          if (!owner) {
-            // Rotated text: buildLines() can't reconstruct visual line order → fall back to OCR
-            const { text: cropText } = await ocrPageWithAutoRotation(
-              page,
-              (text) => matchOwner(toLines(text)) !== null
-            );
-            owner = matchOwner(toLines(cropText));
-            if (!owner) {
-              const fullText = await ocrPage(page, "full", rotationCorrection);
-              owner = matchOwner(toLines(fullText));
-            }
-          }
-        } else if (!owner) {
-          // Hybrid page: some text is embedded (enough to make hasText=true) but the
-          // owner content is rendered as image (e.g. "Print to PDF" documents where the
-          // recipient block is a graphic). Fall back to OCR the same way as image-only pages.
+        if (options.detectOwners) owner = parseOwner(buildLines(content.items));
+
+        let rotationCorrection: Rotation = 0;
+        if (options.detectRotation) {
+          rotationCorrection = detectTextRotation(content.items);
+          console.info(
+            `[extractOwners] page ${pageNum}: detectTextRotation=${rotationCorrection}°`
+          );
+          if (rotationCorrection !== 0) pageRotationCorrections.set(pageNum, rotationCorrection);
+        }
+
+        if (options.detectOwners && !owner) {
+          // Text is embedded but no owner pattern matched (either the owner block is an
+          // image, or the text is rotated and buildLines() can't reconstruct line order).
+          // OCR fallback at the detected rotation (0 when detectRotation is off).
           const { text: cropText } = await ocrPageWithAutoRotation(
             page,
             (text) => matchOwner(toLines(text)) !== null
           );
           owner = matchOwner(toLines(cropText));
           if (!owner) {
-            const fullText = await ocrPage(page, "full", 0);
+            const fullText = await ocrPage(page, "full", rotationCorrection);
             owner = matchOwner(toLines(fullText));
           }
         }
       } else {
-        // Only run OCR-based rotation detection for pages with no /Rotate metadata (i.e.
-        // page.rotate === 0). Pages that already have /Rotate set by the PDF creator are
-        // rendered correctly by pdfjs natively — applying an additional correction would
-        // compound or destroy the existing rotation (e.g. /Rotate:270 + detected 90° = 0°).
-        const rotationCorrection = (page.rotate ?? 0) === 0 ? await detectPageRotation(page) : 0;
-        console.info(
-          `[extractOwners] page ${pageNum}: detectPageRotation=${rotationCorrection}° (page.rotate=${page.rotate})`
-        );
-
-        // Try to find the owner at the detected orientation.
-        const cropText = await ocrPage(page, "crop", rotationCorrection);
-        owner = matchOwner(toLines(cropText));
-        if (!owner) {
-          const fullText = await ocrPage(page, "full", rotationCorrection);
-          owner = matchOwner(toLines(fullText));
+        let rotationCorrection: Rotation = 0;
+        if (options.detectRotation) {
+          // Only run OCR-based rotation detection for pages with no /Rotate metadata (i.e.
+          // page.rotate === 0). Pages that already have /Rotate set by the PDF creator are
+          // rendered correctly by pdfjs natively — applying an additional correction would
+          // compound or destroy the existing rotation (e.g. /Rotate:270 + detected 90° = 0°).
+          rotationCorrection = (page.rotate ?? 0) === 0 ? await detectPageRotation(page) : 0;
+          console.info(
+            `[extractOwners] page ${pageNum}: detectPageRotation=${rotationCorrection}° (page.rotate=${page.rotate})`
+          );
+          if (rotationCorrection !== 0) pageRotationCorrections.set(pageNum, rotationCorrection);
         }
-        if (rotationCorrection !== 0) pageRotationCorrections.set(pageNum, rotationCorrection);
+
+        if (options.detectOwners) {
+          // Don't rely on `rotationCorrection` here — it's only computed when detectRotation
+          // is enabled, and stays 0 otherwise. Search rotations ourselves (same as the
+          // hasText branch) so owner detection works on rotated scans independently of the
+          // rotation toggle.
+          const { text: cropText, rotationCorrection: ocrRotation } = await ocrPageWithAutoRotation(
+            page,
+            (text) => matchOwner(toLines(text)) !== null
+          );
+          owner = matchOwner(toLines(cropText));
+          if (!owner) {
+            const fullText = await ocrPage(page, "full", rotationCorrection || ocrRotation);
+            owner = matchOwner(toLines(fullText));
+          }
+        }
       }
 
       if (owner) {

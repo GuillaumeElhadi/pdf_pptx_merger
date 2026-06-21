@@ -26,6 +26,7 @@ vi.mock("../services/bridge", () => ({
 }));
 
 import { extractOwners } from "../services/ownerExtractor";
+import type { ExtractionResult } from "../services/ownerExtractor";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,8 @@ function resetStore() {
     statusMessage: "Prêt.",
     progress: null,
     lastOutputPath: null,
+    ownersDetectionEnabled: false,
+    rotationDetectionEnabled: false,
   });
 }
 
@@ -199,6 +202,205 @@ describe("useMergeStore — clearError", () => {
   });
 });
 
+describe("useMergeStore — toggles de détection", () => {
+  beforeEach(resetStore);
+
+  it("démarre avec les deux toggles désactivés", () => {
+    const s = useMergeStore.getState();
+    expect(s.ownersDetectionEnabled).toBe(false);
+    expect(s.rotationDetectionEnabled).toBe(false);
+  });
+
+  it("setOwnersDetectionEnabled met à jour le state", () => {
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+    expect(useMergeStore.getState().ownersDetectionEnabled).toBe(true);
+  });
+
+  it("setRotationDetectionEnabled met à jour le state", () => {
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+    expect(useMergeStore.getState().rotationDetectionEnabled).toBe(true);
+  });
+
+  it("setOwnersDetectionEnabled(true) relance extractOwners sur les PDFs sans owners détectés", async () => {
+    const untouched: PdfItem = { id: "a", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [untouched] });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [{ code: "0000001", name: "OWNER A" }],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[0] as PdfItem).owners).toBeDefined();
+    });
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: true,
+      detectRotation: false,
+    });
+  });
+
+  it("setOwnersDetectionEnabled(true) ignore les PDFs déjà traités (owners défini)", async () => {
+    const already: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      owners: [],
+      pageOwners: new Map(),
+    };
+    useMergeStore.setState({ items: [already] });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("setOwnersDetectionEnabled(true) ignore les PDFs déjà en échec (ownersError défini)", async () => {
+    const failed: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      ownersError: "timeout",
+    };
+    useMergeStore.setState({ items: [failed] });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("setRotationDetectionEnabled(true) relance extractOwners sur les PDFs sans correction de rotation détectée", async () => {
+    const untouched: PdfItem = { id: "a", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [untouched] });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map([[1, 90]]),
+    });
+
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[0] as PdfItem).pageRotationCorrections).toBeDefined();
+    });
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: false,
+      detectRotation: true,
+    });
+  });
+
+  it("setRotationDetectionEnabled(true) relance extractOwners même si ownersError est défini (échec owners non lié à la rotation)", async () => {
+    const ownersFailedButRotationPending: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      ownersError: "timeout",
+    };
+    useMergeStore.setState({ items: [ownersFailedButRotationPending] });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map([[1, 90]]),
+    });
+
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[0] as PdfItem).pageRotationCorrections).toBeDefined();
+    });
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: false,
+      detectRotation: true,
+    });
+  });
+
+  it("setRotationDetectionEnabled(true) ignore les PDFs déjà traités (pageRotationCorrections défini)", async () => {
+    const already: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      pageRotationCorrections: new Map(),
+    };
+    useMergeStore.setState({ items: [already] });
+
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("setOwnersDetectionEnabled(false) n'appelle pas extractOwners", () => {
+    const untouched: PdfItem = { id: "a", type: "pdf", pdfPath: "/a.pdf", rotation: 0 };
+    useMergeStore.setState({ items: [untouched], ownersDetectionEnabled: true });
+
+    useMergeStore.getState().setOwnersDetectionEnabled(false);
+
+    expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("sérialise deux activations de toggles en rafale : le 2e processPdfItems attend la fin du 1er", async () => {
+    // "a" still needs owners-detection but already has its rotation determined,
+    // so it's excluded from setRotationDetectionEnabled's pending filter.
+    const ownersPending: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      pageRotationCorrections: new Map(),
+    };
+    // "b" still needs rotation-detection but already has its owners determined,
+    // so it's excluded from setOwnersDetectionEnabled's pending filter.
+    const rotationPending: PdfItem = {
+      id: "b",
+      type: "pdf",
+      pdfPath: "/b.pdf",
+      rotation: 0,
+      owners: [],
+      pageOwners: new Map(),
+    };
+    useMergeStore.setState({ items: [ownersPending, rotationPending] });
+
+    let resolveFirst!: (value: ExtractionResult) => void;
+    const firstCallPromise = new Promise<ExtractionResult>((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    const callOrder: string[] = [];
+    vi.mocked(extractOwners).mockImplementation(async (pdfPath: string) => {
+      callOrder.push(pdfPath);
+      if (pdfPath === "/a.pdf") {
+        return firstCallPromise;
+      }
+      return { owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() };
+    });
+
+    // Trigger two overlapping retroactive runs: owners-detection on item "a",
+    // then immediately rotation-detection on item "b".
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+
+    // Give microtasks a chance to run — only the first call should have fired so far,
+    // because the second processPdfItems call is chained behind the first (still pending).
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(callOrder).toEqual(["/a.pdf"]);
+    expect((useMergeStore.getState().items[1] as PdfItem).pageRotationCorrections).toBeUndefined();
+
+    // Resolve the first extractOwners call — only now should the chain advance to item "b".
+    resolveFirst({ owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() });
+
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[1] as PdfItem).pageRotationCorrections).toBeDefined();
+    });
+
+    expect(callOrder).toEqual(["/a.pdf", "/b.pdf"]);
+  });
+});
+
 describe("useMergeStore — addPdfs", () => {
   beforeEach(resetStore);
 
@@ -231,6 +433,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("les items sont dans le store dès que l'extraction commence", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     let itemCountWhenExtractionStarts = -1;
     vi.mocked(extractOwners).mockImplementation(async () => {
       itemCountWhenExtractionStarts = useMergeStore.getState().items.length;
@@ -243,6 +446,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("peuple owners une fois l'extraction terminée", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const detected = [{ code: "0000001", name: "IMMO CARREFOUR" }];
     vi.mocked(extractOwners).mockResolvedValue({
       owners: detected,
@@ -258,6 +462,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("peuple pageOwners une fois l'extraction terminée", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const pageOwnersMap = new Map([[1, { code: "0000001", name: "OWNER A" }]]);
     vi.mocked(extractOwners).mockResolvedValue({
       owners: [{ code: "0000001", name: "OWNER A" }],
@@ -273,6 +478,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("laisse owners undefined et peuple ownersError si extractOwners lève une erreur", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     vi.mocked(extractOwners).mockRejectedValue(new Error("échec extraction"));
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -284,6 +490,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("status est 'extracting' pendant l'extraction", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     let statusDuringExtraction: string | undefined;
     vi.mocked(extractOwners).mockImplementation(async () => {
       statusDuringExtraction = useMergeStore.getState().status;
@@ -296,6 +503,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("les PDFs sont extraits séquentiellement dans l'ordre", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const callOrder: string[] = [];
     vi.mocked(extractOwners).mockImplementation(async (path) => {
       callOrder.push(path as string);
@@ -308,6 +516,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("status est 'idle' et progress est null après l'extraction complète", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     vi.mocked(extractOwners).mockResolvedValue({
       owners: [],
       pageOwners: new Map(),
@@ -322,6 +531,7 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("l'extraction continue sur les PDFs suivants si l'un d'eux échoue", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
     const detected = [{ code: "0000001", name: "OWNER A" }];
     vi.mocked(extractOwners)
       .mockResolvedValueOnce({
@@ -348,6 +558,85 @@ describe("useMergeStore — addPdfs", () => {
     expect(pdfItems[2].owners).toEqual(detected);
     expect(status).toBe("idle");
     expect(progress).toBeNull();
+  });
+
+  it("n'appelle pas extractOwners quand les deux toggles sont désactivés (comportement par défaut)", async () => {
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).not.toHaveBeenCalled();
+    const { items, status, progress } = useMergeStore.getState();
+    expect(items).toHaveLength(1);
+    expect(status).toBe("idle");
+    expect(progress).toBeNull();
+  });
+
+  it("appelle extractOwners avec detectOwners=true, detectRotation=false quand seul le toggle propriétaires est actif", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true, rotationDetectionEnabled: false });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: true,
+      detectRotation: false,
+    });
+  });
+
+  it("appelle extractOwners avec detectOwners=false, detectRotation=true quand seul le toggle rotation est actif", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: false, rotationDetectionEnabled: true });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: false,
+      detectRotation: true,
+    });
+  });
+
+  it("appelle extractOwners avec les deux flags à true quand les deux toggles sont actifs", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true, rotationDetectionEnabled: true });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: true,
+      detectRotation: true,
+    });
+  });
+
+  it("ne renseigne pas pageRotationCorrections quand seul le toggle propriétaires est actif", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true, rotationDetectionEnabled: false });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [{ code: "0000001", name: "OWNER A" }],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    const item = useMergeStore.getState().items[0] as PdfItem;
+    expect(item.owners).toEqual([{ code: "0000001", name: "OWNER A" }]);
+    expect(item.pageRotationCorrections).toBeUndefined();
   });
 });
 
