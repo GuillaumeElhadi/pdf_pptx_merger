@@ -8,6 +8,8 @@ import { Bridge } from "../services/bridge";
 import { extractOwners } from "../services/ownerExtractor";
 import { strings } from "../strings";
 import { logger } from "../utils/logger";
+import { RUN_LABEL, saveMetrics, summarizeBatch, type FileMetric } from "../utils/metrics";
+import { mapWithConcurrency } from "../utils/concurrency";
 import type {
   AppStatus,
   MergeItem,
@@ -19,6 +21,13 @@ import type {
 } from "../types";
 
 const PPTX_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#06b6d4", "#ef4444"];
+
+/**
+ * Max number of PDFs processed concurrently in processPdfItems. OCR (tesseract.js) runs on a
+ * single shared worker regardless of this value, so this mainly overlaps the non-OCR work
+ * (pdf.js load, getTextContent, canvas rendering) of one file with the OCR wait of another.
+ */
+const FILE_PROCESSING_CONCURRENCY = 3;
 
 /**
  * Applies the page-1 rotation correction to every page of a PDF and saves the
@@ -126,18 +135,21 @@ export const useMergeStore = create<MergeStore>((set, get) => {
       let done = 0;
       let failedCount = 0;
       const allFoundOwners = new Map<string, OwnerInfo>();
+      const batchStartedAt = new Date().toISOString();
+      const fileMetrics: FileMetric[] = [];
       try {
-        for (const item of targetItems) {
+        await mapWithConcurrency(targetItems, FILE_PROCESSING_CONCURRENCY, async (item) => {
           const filename = item.pdfPath.split(/[\\/]/).pop() ?? item.pdfPath;
           logger.info(
             "processPdfItems:extractOwners",
             `start ${done + 1}/${targetItems.length} — ${filename}`
           );
           try {
-            const { owners, pageOwners, pageRotationCorrections } = await extractOwners(
+            const { owners, pageOwners, pageRotationCorrections, fileMetric } = await extractOwners(
               item.pdfPath,
               options
             );
+            fileMetrics.push(fileMetric);
             done++;
             for (const o of owners) {
               if (!allFoundOwners.has(o.name)) allFoundOwners.set(o.name, o);
@@ -201,7 +213,7 @@ export const useMergeStore = create<MergeStore>((set, get) => {
               statusMessage: strings.status.extractingOwners(done, targetItems.length),
             }));
           }
-        }
+        });
       } finally {
         const ownerNames = Array.from(allFoundOwners.values())
           .map((o) => `${o.name} (${o.code})`)
@@ -210,6 +222,30 @@ export const useMergeStore = create<MergeStore>((set, get) => {
           "processPdfItems:extractOwners",
           `complete — ${targetItems.length} PDF${targetItems.length !== 1 ? "s" : ""}, ${allFoundOwners.size} propriétaire${allFoundOwners.size !== 1 ? "s" : ""} distinct${allFoundOwners.size !== 1 ? "s" : ""}${failedCount ? ` (${failedCount} en échec)` : ""}${ownerNames ? ` : ${ownerNames}` : ""}`
         );
+
+        if (fileMetrics.length > 0) {
+          const batch = {
+            label: RUN_LABEL,
+            startedAt: batchStartedAt,
+            finishedAt: new Date().toISOString(),
+            totalMs: fileMetrics.reduce((s, f) => s + f.totalMs, 0),
+            fileCount: fileMetrics.length,
+            files: fileMetrics,
+            summary: summarizeBatch(fileMetrics),
+          };
+          try {
+            const metricsPath = await saveMetrics(batch, tempDir);
+            logger.info(
+              "processPdfItems:metrics",
+              `[${RUN_LABEL}] ${batch.fileCount} fichiers, ${batch.summary.pageCount} pages, ` +
+                `OCR=${Math.round(batch.summary.totalOcrMs)}ms non-OCR=${Math.round(batch.summary.totalNonOcrMs)}ms, ` +
+                `avg/fichier=${Math.round(batch.summary.avgMsPerFile)}ms — sauvegardé → ${metricsPath}`
+            );
+          } catch (metricsErr) {
+            logger.warn("processPdfItems:metrics", `échec sauvegarde — ${String(metricsErr)}`);
+          }
+        }
+
         set({
           status: "idle",
           progress: null,

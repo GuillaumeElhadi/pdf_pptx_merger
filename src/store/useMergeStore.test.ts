@@ -54,6 +54,8 @@ function resetStore() {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
+const emptyFileMetric = () => ({ filePath: "/x.pdf", pageCount: 0, totalMs: 0, pages: [] });
+
 describe("useMergeStore — état initial", () => {
   it("démarre avec un état vide et idle", () => {
     resetStore();
@@ -228,6 +230,7 @@ describe("useMergeStore — toggles de détection", () => {
       owners: [{ code: "0000001", name: "OWNER A" }],
       pageOwners: new Map(),
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
 
     useMergeStore.getState().setOwnersDetectionEnabled(true);
@@ -279,6 +282,7 @@ describe("useMergeStore — toggles de détection", () => {
       owners: [],
       pageOwners: new Map(),
       pageRotationCorrections: new Map([[1, 90]]),
+      fileMetric: emptyFileMetric(),
     });
 
     useMergeStore.getState().setRotationDetectionEnabled(true);
@@ -305,6 +309,7 @@ describe("useMergeStore — toggles de détection", () => {
       owners: [],
       pageOwners: new Map(),
       pageRotationCorrections: new Map([[1, 90]]),
+      fileMetric: emptyFileMetric(),
     });
 
     useMergeStore.getState().setRotationDetectionEnabled(true);
@@ -375,7 +380,12 @@ describe("useMergeStore — toggles de détection", () => {
       if (pdfPath === "/a.pdf") {
         return firstCallPromise;
       }
-      return { owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() };
+      return {
+        owners: [],
+        pageOwners: new Map(),
+        pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
+      };
     });
 
     // Trigger two overlapping retroactive runs: owners-detection on item "a",
@@ -391,7 +401,12 @@ describe("useMergeStore — toggles de détection", () => {
     expect((useMergeStore.getState().items[1] as PdfItem).pageRotationCorrections).toBeUndefined();
 
     // Resolve the first extractOwners call — only now should the chain advance to item "b".
-    resolveFirst({ owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() });
+    resolveFirst({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
+    });
 
     await vi.waitFor(() => {
       expect((useMergeStore.getState().items[1] as PdfItem).pageRotationCorrections).toBeDefined();
@@ -437,7 +452,12 @@ describe("useMergeStore — addPdfs", () => {
     let itemCountWhenExtractionStarts = -1;
     vi.mocked(extractOwners).mockImplementation(async () => {
       itemCountWhenExtractionStarts = useMergeStore.getState().items.length;
-      return { owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() };
+      return {
+        owners: [],
+        pageOwners: new Map(),
+        pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
+      };
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -452,6 +472,7 @@ describe("useMergeStore — addPdfs", () => {
       owners: detected,
       pageOwners: new Map(),
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -468,6 +489,7 @@ describe("useMergeStore — addPdfs", () => {
       owners: [{ code: "0000001", name: "OWNER A" }],
       pageOwners: pageOwnersMap,
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -494,7 +516,12 @@ describe("useMergeStore — addPdfs", () => {
     let statusDuringExtraction: string | undefined;
     vi.mocked(extractOwners).mockImplementation(async () => {
       statusDuringExtraction = useMergeStore.getState().status;
-      return { owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() };
+      return {
+        owners: [],
+        pageOwners: new Map(),
+        pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
+      };
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -507,12 +534,62 @@ describe("useMergeStore — addPdfs", () => {
     const callOrder: string[] = [];
     vi.mocked(extractOwners).mockImplementation(async (path) => {
       callOrder.push(path as string);
-      return { owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() };
+      return {
+        owners: [],
+        pageOwners: new Map(),
+        pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
+      };
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf", "/b.pdf", "/c.pdf"]);
 
     await useMergeStore.getState().addPdfs();
     expect(callOrder).toEqual(["/a.pdf", "/b.pdf", "/c.pdf"]);
+  });
+
+  it("traite plusieurs PDFs avec une concurrence bornée (pas tout en séquentiel)", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
+
+    let active = 0;
+    let maxActive = 0;
+    const releasers: Array<() => void> = [];
+
+    vi.mocked(extractOwners).mockImplementation(async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => releasers.push(() => resolve()));
+      active--;
+      return {
+        owners: [],
+        pageOwners: new Map(),
+        pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
+      };
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf", "/b.pdf", "/c.pdf", "/d.pdf"]);
+
+    const addPdfsPromise = useMergeStore.getState().addPdfs();
+
+    // Let microtasks settle so every initially-launched worker has started and is now
+    // blocked on its own deferred promise.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(maxActive).toBeGreaterThan(1); // more than one file in flight at once
+    expect(maxActive).toBeLessThan(4); // but not all 4 at once — concurrency is bounded
+
+    // Drain all pending extractions in rounds so addPdfs() can resolve, regardless of
+    // how many workers are active per round.
+    for (let round = 0; round < 4; round++) {
+      const toRelease = releasers.splice(0, releasers.length);
+      toRelease.forEach((r) => r());
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    await addPdfsPromise;
+    expect(useMergeStore.getState().items).toHaveLength(4);
   });
 
   it("status est 'idle' et progress est null après l'extraction complète", async () => {
@@ -521,6 +598,7 @@ describe("useMergeStore — addPdfs", () => {
       owners: [],
       pageOwners: new Map(),
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf", "/b.pdf"]);
 
@@ -538,12 +616,14 @@ describe("useMergeStore — addPdfs", () => {
         owners: detected,
         pageOwners: new Map(),
         pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
       })
       .mockRejectedValueOnce(new Error("fichier corrompu"))
       .mockResolvedValueOnce({
         owners: detected,
         pageOwners: new Map(),
         pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
       });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf", "/b.pdf", "/c.pdf"]);
 
@@ -578,6 +658,7 @@ describe("useMergeStore — addPdfs", () => {
       owners: [],
       pageOwners: new Map(),
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -595,6 +676,7 @@ describe("useMergeStore — addPdfs", () => {
       owners: [],
       pageOwners: new Map(),
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -612,6 +694,7 @@ describe("useMergeStore — addPdfs", () => {
       owners: [],
       pageOwners: new Map(),
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 
@@ -629,6 +712,7 @@ describe("useMergeStore — addPdfs", () => {
       owners: [{ code: "0000001", name: "OWNER A" }],
       pageOwners: new Map(),
       pageRotationCorrections: new Map(),
+      fileMetric: emptyFileMetric(),
     });
     vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
 

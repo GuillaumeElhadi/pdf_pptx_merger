@@ -1,14 +1,18 @@
 import type { PDFPageProxy } from "pdfjs-dist/types/src/display/api";
 import { createWorker, type Worker } from "tesseract.js";
 import type { Rotation } from "../types";
+import { createWorkerPool } from "../utils/workerPool";
 
-let workerInstance: Worker | null = null;
-let workerFailed = false;
+/**
+ * Tesseract.js workers process one recognize() job at a time each, so a single shared
+ * worker serializes all OCR regardless of how many files/pages are processed "concurrently"
+ * upstream. A pool lets that many OCR jobs actually run in parallel — sized to match
+ * FILE_PROCESSING_CONCURRENCY in useMergeStore.ts so each concurrently-processed file can
+ * get its own worker instead of queueing behind one.
+ */
+const OCR_WORKER_POOL_SIZE = 3;
 
-async function ensureWorker(): Promise<Worker> {
-  if (workerFailed) throw new Error("Tesseract worker failed to initialize");
-  if (workerInstance) return workerInstance;
-
+async function createTesseractWorker(): Promise<Worker> {
   const base = window.location.origin + "/tessdata";
   // createWorker's internal `.catch(() => {})` swallows loadLanguage/initialize
   // failures without rejecting workerRes, causing it to hang forever.
@@ -19,27 +23,22 @@ async function ensureWorker(): Promise<Worker> {
     setTimeout(() => reject(new Error("Tesseract worker init timed out after 15 s")), 15_000)
   );
 
-  try {
-    workerInstance = await Promise.race([
-      createWorker("fra", 1, {
-        workerPath: `${base}/worker.min.js`,
-        langPath: base,
-        corePath: base,
-        gzip: false,
-        logger: () => {},
-        errorHandler: (err: unknown) => {
-          console.error("[Tesseract] worker error:", err);
-        },
-      }),
-      timeout,
-    ]);
-  } catch (e) {
-    workerFailed = true;
-    throw e;
-  }
-
-  return workerInstance;
+  return Promise.race([
+    createWorker("fra", 1, {
+      workerPath: `${base}/worker.min.js`,
+      langPath: base,
+      corePath: base,
+      gzip: false,
+      logger: () => {},
+      errorHandler: (err: unknown) => {
+        console.error("[Tesseract] worker error:", err);
+      },
+    }),
+    timeout,
+  ]);
 }
+
+const workerPool = createWorkerPool(OCR_WORKER_POOL_SIZE, createTesseractWorker);
 
 /**
  * Renders a pdfjs page to canvas and returns the OCR text.
@@ -111,10 +110,10 @@ async function recognizePage(
 
   let worker: Worker;
   try {
-    worker = await ensureWorker();
+    worker = await workerPool.acquire();
     console.info("[ocrPage] worker ready");
   } catch (e) {
-    console.error("[ocrPage] ensureWorker FAILED:", String(e));
+    console.error("[ocrPage] worker pool acquire FAILED:", String(e));
     throw e;
   }
 
@@ -138,6 +137,8 @@ async function recognizePage(
   } catch (e) {
     console.error("[ocrPage] recognize FAILED:", String(e));
     throw e;
+  } finally {
+    workerPool.release(worker);
   }
 }
 

@@ -2,6 +2,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { detectPageRotation, ocrPage, ocrPageWithAutoRotation } from "./ocrExtractor";
 import type { Rotation } from "../types";
+import { PageTimer, buildFileMetric, type FileMetric, type PageMetric } from "../utils/metrics";
 
 export interface OwnerInfo {
   code: string; // e.g. "0000001"
@@ -37,6 +38,8 @@ export interface ExtractionResult {
   pageOwners: Map<number, OwnerInfo>;
   /** 1-based page → rotation correction (degrees). Only non-zero entries stored. */
   pageRotationCorrections: Map<number, Rotation>;
+  /** Per-page timing breakdown — used for performance benchmarking, see src/utils/metrics.ts. */
+  fileMetric: FileMetric;
 }
 
 export interface ExtractOwnersOptions {
@@ -243,6 +246,9 @@ export async function extractOwners(
     clearTimeout(timeoutId);
   });
 
+  const pageMetrics: PageMetric[] = [];
+  const fileStart = performance.now();
+
   try {
     const found = new Map<string, OwnerInfo>();
     const pageOwners = new Map<number, OwnerInfo>();
@@ -250,8 +256,13 @@ export async function extractOwners(
     let currentOwner: OwnerInfo | null = null;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const pageStart = performance.now();
+      const timer = new PageTimer();
+      let usedOcrForOwner = false;
+      let usedOcrForRotation = false;
+
       const page = await pdf.getPage(pageNum);
-      const content = await page.getTextContent();
+      const content = await timer.measure("textExtractMs", () => page.getTextContent());
       const hasText = content.items.some((i) => isPdfTextItem(i) && i.str.trim().length > 0);
 
       let owner: OwnerInfo | null = null;
@@ -267,11 +278,15 @@ export async function extractOwners(
       );
 
       if (hasText) {
-        if (options.detectOwners) owner = parseOwner(buildLines(content.items));
+        if (options.detectOwners) {
+          owner = timer.measureSync("ownerParseMs", () => parseOwner(buildLines(content.items)));
+        }
 
         let rotationCorrection: Rotation = 0;
         if (options.detectRotation) {
-          rotationCorrection = detectTextRotation(content.items);
+          rotationCorrection = timer.measureSync("textRotationDetectMs", () =>
+            detectTextRotation(content.items)
+          );
           console.info(
             `[extractOwners] page ${pageNum}: detectTextRotation=${rotationCorrection}°`
           );
@@ -282,44 +297,65 @@ export async function extractOwners(
           // Text is embedded but no owner pattern matched (either the owner block is an
           // image, or the text is rotated and buildLines() can't reconstruct line order).
           // OCR fallback at the detected rotation (0 when detectRotation is off).
-          const { text: cropText } = await ocrPageWithAutoRotation(
-            page,
-            (text) => matchOwner(toLines(text)) !== null
+          usedOcrForOwner = true;
+          const { text: cropText } = await timer.measure("ocrOwnerMs", () =>
+            ocrPageWithAutoRotation(page, (text) => matchOwner(toLines(text)) !== null)
           );
           owner = matchOwner(toLines(cropText));
           if (!owner) {
-            const fullText = await ocrPage(page, "full", rotationCorrection);
+            const fullText = await timer.measure("ocrOwnerMs", () =>
+              ocrPage(page, "full", rotationCorrection)
+            );
             owner = matchOwner(toLines(fullText));
           }
         }
       } else {
         let rotationCorrection: Rotation = 0;
+        // Set when the owner-crop OCR sweep below finds the owner directly (no full-page
+        // fallback needed) — its rotation reading is then trustworthy enough to reuse for
+        // page rotation, skipping a second redundant 4-rotation OCR sweep in detectPageRotation.
+        let ownerSweepRotation: Rotation | null = null;
+
+        if (options.detectOwners) {
+          // Don't rely on `rotationCorrection` here — it's only computed below when
+          // detectRotation is enabled, and stays 0 otherwise. Search rotations ourselves
+          // (same as the hasText branch) so owner detection works on rotated scans
+          // independently of the rotation toggle.
+          usedOcrForOwner = true;
+          const { text: cropText, rotationCorrection: ocrRotation } = await timer.measure(
+            "ocrOwnerMs",
+            () => ocrPageWithAutoRotation(page, (text) => matchOwner(toLines(text)) !== null)
+          );
+          owner = matchOwner(toLines(cropText));
+          if (owner) {
+            ownerSweepRotation = ocrRotation;
+          } else {
+            const fullText = await timer.measure("ocrOwnerMs", () =>
+              ocrPage(page, "full", ocrRotation)
+            );
+            owner = matchOwner(toLines(fullText));
+          }
+        }
+
         if (options.detectRotation) {
           // Only run OCR-based rotation detection for pages with no /Rotate metadata (i.e.
           // page.rotate === 0). Pages that already have /Rotate set by the PDF creator are
           // rendered correctly by pdfjs natively — applying an additional correction would
           // compound or destroy the existing rotation (e.g. /Rotate:270 + detected 90° = 0°).
-          rotationCorrection = (page.rotate ?? 0) === 0 ? await detectPageRotation(page) : 0;
+          if ((page.rotate ?? 0) === 0) {
+            if (ownerSweepRotation !== null) {
+              rotationCorrection = ownerSweepRotation;
+            } else {
+              usedOcrForRotation = true;
+              rotationCorrection = await timer.measure("ocrRotationDetectMs", () =>
+                detectPageRotation(page)
+              );
+            }
+          }
           console.info(
             `[extractOwners] page ${pageNum}: detectPageRotation=${rotationCorrection}° (page.rotate=${page.rotate})`
           );
           if (rotationCorrection !== 0) pageRotationCorrections.set(pageNum, rotationCorrection);
-        }
-
-        if (options.detectOwners) {
-          // Don't rely on `rotationCorrection` here — it's only computed when detectRotation
-          // is enabled, and stays 0 otherwise. Search rotations ourselves (same as the
-          // hasText branch) so owner detection works on rotated scans independently of the
-          // rotation toggle.
-          const { text: cropText, rotationCorrection: ocrRotation } = await ocrPageWithAutoRotation(
-            page,
-            (text) => matchOwner(toLines(text)) !== null
-          );
-          owner = matchOwner(toLines(cropText));
-          if (!owner) {
-            const fullText = await ocrPage(page, "full", rotationCorrection || ocrRotation);
-            owner = matchOwner(toLines(fullText));
-          }
         }
       }
 
@@ -330,9 +366,27 @@ export async function extractOwners(
       if (currentOwner) {
         pageOwners.set(pageNum, currentOwner);
       }
+
+      pageMetrics.push({
+        pageNum,
+        hasText,
+        usedOcrForOwner,
+        usedOcrForRotation,
+        textExtractMs: timer.getMs("textExtractMs"),
+        ownerParseMs: timer.getMs("ownerParseMs"),
+        textRotationDetectMs: timer.getMs("textRotationDetectMs"),
+        ocrRotationDetectMs: timer.getMs("ocrRotationDetectMs"),
+        ocrOwnerMs: timer.getMs("ocrOwnerMs"),
+        totalMs: performance.now() - pageStart,
+      });
     }
 
-    return { owners: Array.from(found.values()), pageOwners, pageRotationCorrections };
+    return {
+      owners: Array.from(found.values()),
+      pageOwners,
+      pageRotationCorrections,
+      fileMetric: buildFileMetric(pdfPath, pageMetrics, performance.now() - fileStart),
+    };
   } finally {
     await pdf.destroy();
   }

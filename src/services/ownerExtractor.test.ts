@@ -463,14 +463,14 @@ describe("extractOwners — carry-forward : pages sans label héritent du dernie
 });
 
 describe("extractOwners — fallback OCR (page sans texte)", () => {
-  it("appelle detectPageRotation puis ocrPageWithAutoRotation quand une page n'a aucun item texte", async () => {
+  it("appelle ocrPageWithAutoRotation quand une page n'a aucun item texte (sa rotation est réutilisée, detectPageRotation n'est pas rappelé)", async () => {
     vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
       text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
       rotationCorrection: 0,
     });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
-    expect(detectPageRotation).toHaveBeenCalledWith(expect.anything());
+    expect(detectPageRotation).not.toHaveBeenCalled();
     expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
     expect(result.owners).toEqual([{ code: "0000001", name: "IMMO CARREFOUR" }]);
   });
@@ -512,6 +512,86 @@ describe("extractOwners — fallback OCR (page sans texte)", () => {
     await extractOwners("/doc.pdf");
     expect(ocrPage).not.toHaveBeenCalled();
     expect(ocrPageWithAutoRotation).not.toHaveBeenCalled();
+  });
+});
+
+describe("extractOwners — dédup rotation/owner (page sans texte, propriétaire trouvé directement via le crop OCR)", () => {
+  it("réutilise la rotation trouvée par ocrPageWithAutoRotation, sans rappeler detectPageRotation", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nOWNER A",
+      rotationCorrection: 90,
+    });
+    mockDocument([{ width: 595, height: 842, items: [], rotate: 0 }]);
+
+    const result = await extractOwners("/doc.pdf", { detectOwners: true, detectRotation: true });
+
+    expect(detectPageRotation).not.toHaveBeenCalled();
+    expect(ocrPage).not.toHaveBeenCalled(); // owner found directly from the crop, no full-page fallback needed
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+    expect(result.owners).toEqual([{ code: "0000001", name: "OWNER A" }]);
+  });
+
+  it("ne compte pas de coût OCR de rotation séparé quand la rotation est réutilisée (métrique)", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nOWNER A",
+      rotationCorrection: 90,
+    });
+    mockDocument([{ width: 595, height: 842, items: [], rotate: 0 }]);
+
+    const result = await extractOwners("/doc.pdf", { detectOwners: true, detectRotation: true });
+
+    const page = result.fileMetric.pages[0];
+    expect(page.usedOcrForRotation).toBe(false);
+    expect(page.ocrRotationDetectMs).toBe(0);
+  });
+
+  it("retombe sur detectPageRotation quand le crop OCR n'a pas trouvé directement le propriétaire (fallback full)", async () => {
+    // Reproduces the existing "sans options" scenario: crop validation fails (text vide),
+    // owner is only found via the full-page OCR fallback — the crop's rotation guess is
+    // unreliable here, so detectPageRotation must still run.
+    vi.mocked(detectPageRotation).mockResolvedValue(90);
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({ text: "", rotationCorrection: 0 });
+    vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000001\nOWNER A");
+    mockDocument([{ width: 595, height: 842, items: [], rotate: 0 }]);
+
+    const result = await extractOwners("/doc.pdf", { detectOwners: true, detectRotation: true });
+
+    expect(detectPageRotation).toHaveBeenCalledTimes(1);
+    expect(result.pageRotationCorrections.get(1)).toBe(90);
+    expect(result.owners).toEqual([{ code: "0000001", name: "OWNER A" }]);
+  });
+});
+
+describe("extractOwners — fileMetric (instrumentation perf)", () => {
+  it("retourne une métrique par page pour une page texte sans OCR", async () => {
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [textItem("Copropriétaire 0000001", 500), textItem("OWNER A", 480)],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.fileMetric.filePath).toBe("/doc.pdf");
+    expect(result.fileMetric.pageCount).toBe(1);
+    expect(result.fileMetric.pages).toHaveLength(1);
+    const page = result.fileMetric.pages[0];
+    expect(page.pageNum).toBe(1);
+    expect(page.hasText).toBe(true);
+    expect(page.usedOcrForOwner).toBe(false);
+    expect(page.usedOcrForRotation).toBe(false);
+  });
+
+  it("marque usedOcrForOwner=true quand le fallback OCR est utilisé (page sans texte)", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nOWNER A",
+      rotationCorrection: 0,
+    });
+    mockDocument([{ width: 595, height: 842, items: [] }]);
+    const result = await extractOwners("/doc.pdf");
+    const page = result.fileMetric.pages[0];
+    expect(page.hasText).toBe(false);
+    expect(page.usedOcrForOwner).toBe(true);
   });
 });
 
