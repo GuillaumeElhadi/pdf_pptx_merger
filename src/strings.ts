@@ -11,6 +11,19 @@ export const strings = {
     googleDriveTooltip: (path: string) => `Ouvrir depuis Google Drive (${path})`,
     ownersToggle: "🔍 Détecter propriétaires",
     rotationToggle: "↻ Corriger orientation",
+    settingsTooltip: "Réglages",
+  },
+
+  // SettingsDialog
+  settings: {
+    title: "Réglages",
+    performanceLabel: "Niveau de performance",
+    levelEconomical: "Économe",
+    levelBalanced: "Équilibré",
+    levelPerformance: "Performance",
+    performanceCaption: (workers: number, maxWorkers: number) =>
+      `${workers} worker${workers !== 1 ? "s" : ""} (${maxWorkers} cœur${maxWorkers !== 1 ? "s" : ""} détecté${maxWorkers !== 1 ? "s" : ""} sur cette machine)`,
+    close: "Fermer",
   },
 
   // StatusBar
