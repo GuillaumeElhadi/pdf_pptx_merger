@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.19.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.19.0...v3.19.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* prevent false positives in owner extraction from accounting tables ([#65](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/65)) ([1ec25a1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/1ec25a1095f318b149354f39005429329dbe66a1))
+
 ## [3.19.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.18.0...v3.19.0) (2026-06-21)
 
 
