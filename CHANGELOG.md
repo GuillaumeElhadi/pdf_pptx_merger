@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.19.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.18.0...v3.19.0) (2026-06-21)
+
+
+### Features
+
+* configurable performance level (OCR worker pool + file concurrency) ([#63](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/63)) ([37b361d](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/37b361dd18ad7d4bbd701ba003f8957d10529190))
+
 ## [3.18.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.17.0...v3.18.0) (2026-06-21)
 
 
