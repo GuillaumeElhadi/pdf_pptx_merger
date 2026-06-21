@@ -98,3 +98,30 @@ describe("TopBar — interactions", () => {
     expect(Bridge.pickPdfFiles).toHaveBeenCalledOnce();
   });
 });
+
+describe("TopBar — toggles de détection", () => {
+  it("affiche les deux toggles désactivés par défaut", () => {
+    renderTopBar();
+    expect(screen.getByLabelText(/Détecter propriétaires/)).not.toBeChecked();
+    expect(screen.getByLabelText(/Corriger orientation/)).not.toBeChecked();
+  });
+
+  it("active le toggle propriétaires au clic", async () => {
+    renderTopBar();
+    await userEvent.click(screen.getByLabelText(/Détecter propriétaires/));
+    expect(useMergeStore.getState().ownersDetectionEnabled).toBe(true);
+  });
+
+  it("active le toggle rotation au clic", async () => {
+    renderTopBar();
+    await userEvent.click(screen.getByLabelText(/Corriger orientation/));
+    expect(useMergeStore.getState().rotationDetectionEnabled).toBe(true);
+  });
+
+  it("désactive les deux toggles pendant la conversion", () => {
+    useMergeStore.setState({ status: "converting" });
+    renderTopBar();
+    expect(screen.getByLabelText(/Détecter propriétaires/)).toBeDisabled();
+    expect(screen.getByLabelText(/Corriger orientation/)).toBeDisabled();
+  });
+});

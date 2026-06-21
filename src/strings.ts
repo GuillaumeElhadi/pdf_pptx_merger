@@ -9,6 +9,8 @@ export const strings = {
     generatePdf: "⚙ Générer PDF",
     generatePdfMerging: "Fusion…",
     googleDriveTooltip: (path: string) => `Ouvrir depuis Google Drive (${path})`,
+    ownersToggle: "🔍 Détecter propriétaires",
+    rotationToggle: "↻ Corriger orientation",
   },
 
   // StatusBar

@@ -26,6 +26,7 @@ vi.mock("../services/bridge", () => ({
 }));
 
 import { extractOwners } from "../services/ownerExtractor";
+import type { ExtractionResult } from "../services/ownerExtractor";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -291,6 +292,32 @@ describe("useMergeStore — toggles de détection", () => {
     });
   });
 
+  it("setRotationDetectionEnabled(true) relance extractOwners même si ownersError est défini (échec owners non lié à la rotation)", async () => {
+    const ownersFailedButRotationPending: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      ownersError: "timeout",
+    };
+    useMergeStore.setState({ items: [ownersFailedButRotationPending] });
+    vi.mocked(extractOwners).mockResolvedValue({
+      owners: [],
+      pageOwners: new Map(),
+      pageRotationCorrections: new Map([[1, 90]]),
+    });
+
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[0] as PdfItem).pageRotationCorrections).toBeDefined();
+    });
+
+    expect(extractOwners).toHaveBeenCalledWith("/a.pdf", {
+      detectOwners: false,
+      detectRotation: true,
+    });
+  });
+
   it("setRotationDetectionEnabled(true) ignore les PDFs déjà traités (pageRotationCorrections défini)", async () => {
     const already: PdfItem = {
       id: "a",
@@ -313,6 +340,64 @@ describe("useMergeStore — toggles de détection", () => {
     useMergeStore.getState().setOwnersDetectionEnabled(false);
 
     expect(extractOwners).not.toHaveBeenCalled();
+  });
+
+  it("sérialise deux activations de toggles en rafale : le 2e processPdfItems attend la fin du 1er", async () => {
+    // "a" still needs owners-detection but already has its rotation determined,
+    // so it's excluded from setRotationDetectionEnabled's pending filter.
+    const ownersPending: PdfItem = {
+      id: "a",
+      type: "pdf",
+      pdfPath: "/a.pdf",
+      rotation: 0,
+      pageRotationCorrections: new Map(),
+    };
+    // "b" still needs rotation-detection but already has its owners determined,
+    // so it's excluded from setOwnersDetectionEnabled's pending filter.
+    const rotationPending: PdfItem = {
+      id: "b",
+      type: "pdf",
+      pdfPath: "/b.pdf",
+      rotation: 0,
+      owners: [],
+      pageOwners: new Map(),
+    };
+    useMergeStore.setState({ items: [ownersPending, rotationPending] });
+
+    let resolveFirst!: (value: ExtractionResult) => void;
+    const firstCallPromise = new Promise<ExtractionResult>((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    const callOrder: string[] = [];
+    vi.mocked(extractOwners).mockImplementation(async (pdfPath: string) => {
+      callOrder.push(pdfPath);
+      if (pdfPath === "/a.pdf") {
+        return firstCallPromise;
+      }
+      return { owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() };
+    });
+
+    // Trigger two overlapping retroactive runs: owners-detection on item "a",
+    // then immediately rotation-detection on item "b".
+    useMergeStore.getState().setOwnersDetectionEnabled(true);
+    useMergeStore.getState().setRotationDetectionEnabled(true);
+
+    // Give microtasks a chance to run — only the first call should have fired so far,
+    // because the second processPdfItems call is chained behind the first (still pending).
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(callOrder).toEqual(["/a.pdf"]);
+    expect((useMergeStore.getState().items[1] as PdfItem).pageRotationCorrections).toBeUndefined();
+
+    // Resolve the first extractOwners call — only now should the chain advance to item "b".
+    resolveFirst({ owners: [], pageOwners: new Map(), pageRotationCorrections: new Map() });
+
+    await vi.waitFor(() => {
+      expect((useMergeStore.getState().items[1] as PdfItem).pageRotationCorrections).toBeDefined();
+    });
+
+    expect(callOrder).toEqual(["/a.pdf", "/b.pdf"]);
   });
 });
 

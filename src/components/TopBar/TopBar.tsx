@@ -5,7 +5,17 @@ import { strings } from "../../strings";
 import { useTheme } from "../../hooks/useTheme";
 
 export function TopBar() {
-  const { pptxSources, items, status, loadPptx, addPdfs } = useMergeStore();
+  const {
+    pptxSources,
+    items,
+    status,
+    loadPptx,
+    addPdfs,
+    ownersDetectionEnabled,
+    rotationDetectionEnabled,
+    setOwnersDetectionEnabled,
+    setRotationDetectionEnabled,
+  } = useMergeStore();
   const [googleDrivePath, setGoogleDrivePath] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
 
@@ -63,6 +73,35 @@ export function TopBar() {
             </button>
           )}
         </div>
+      </div>
+
+      <div style={styles.toggleGroup}>
+        <label style={styles.toggleLabel}>
+          <span style={switchTrackStyle(ownersDetectionEnabled, busy)}>
+            <input
+              type="checkbox"
+              checked={ownersDetectionEnabled}
+              onChange={(e) => setOwnersDetectionEnabled(e.target.checked)}
+              disabled={busy}
+              style={styles.switchInput}
+            />
+            <span style={switchThumbStyle(ownersDetectionEnabled)} />
+          </span>
+          {strings.topBar.ownersToggle}
+        </label>
+        <label style={styles.toggleLabel}>
+          <span style={switchTrackStyle(rotationDetectionEnabled, busy)}>
+            <input
+              type="checkbox"
+              checked={rotationDetectionEnabled}
+              onChange={(e) => setRotationDetectionEnabled(e.target.checked)}
+              disabled={busy}
+              style={styles.switchInput}
+            />
+            <span style={switchThumbStyle(rotationDetectionEnabled)} />
+          </span>
+          {strings.topBar.rotationToggle}
+        </label>
       </div>
 
       <button
@@ -135,6 +174,30 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fff",
     fontWeight: 600,
   },
+  toggleGroup: {
+    display: "flex",
+    gap: 12,
+    flexShrink: 0,
+  },
+  toggleLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 12,
+    color: "var(--text-title)",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    userSelect: "none",
+  },
+  switchInput: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    margin: 0,
+    opacity: 0,
+    cursor: "pointer",
+  },
   themeBtn: {
     padding: "6px 10px",
     border: "none",
@@ -146,3 +209,37 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
 };
+
+const SWITCH_WIDTH = 32;
+const SWITCH_HEIGHT = 18;
+const THUMB_SIZE = 14;
+const THUMB_INSET = 2;
+
+function switchTrackStyle(checked: boolean, disabled: boolean): React.CSSProperties {
+  return {
+    position: "relative",
+    display: "inline-block",
+    flexShrink: 0,
+    width: SWITCH_WIDTH,
+    height: SWITCH_HEIGHT,
+    borderRadius: SWITCH_HEIGHT / 2,
+    background: checked ? "var(--btn-generate-bg)" : "var(--btn-bg)",
+    opacity: disabled ? 0.5 : 1,
+    transition: "background-color 0.15s ease",
+  };
+}
+
+function switchThumbStyle(checked: boolean): React.CSSProperties {
+  return {
+    position: "absolute",
+    top: THUMB_INSET,
+    left: checked ? SWITCH_WIDTH - THUMB_SIZE - THUMB_INSET : THUMB_INSET,
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: "50%",
+    background: "#fff",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.3)",
+    transition: "left 0.15s ease",
+    pointerEvents: "none",
+  };
+}
