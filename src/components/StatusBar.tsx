@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
-  const { status, statusMessage, progress, clearError } = useMergeStore();
+  const { status, statusMessage, progress, pptxTask, clearError } = useMergeStore();
 
   const msgColor =
     status === "error"
@@ -54,6 +54,12 @@ export function StatusBar({ update, currentVersion, onUpdateClick }: Props) {
           </button>
         )}
       </div>
+      {pptxTask && (
+        <div style={styles.bar}>
+          <span style={styles.spinner}>⏳</span>
+          <span style={{ ...styles.msg, color: "#f0a020" }}>{pptxTask.message}</span>
+        </div>
+      )}
     </div>
   );
 }

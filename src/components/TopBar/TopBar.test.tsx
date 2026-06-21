@@ -52,18 +52,46 @@ describe("TopBar — état idle avec PDF", () => {
   });
 });
 
-describe("TopBar — état converting", () => {
-  beforeEach(() => useMergeStore.setState({ status: "converting" }));
+describe("TopBar — état converting (PPTX en cours)", () => {
+  beforeEach(() =>
+    useMergeStore.setState({
+      pptxTask: { message: "Conversion…", progress: null },
+      pptxPendingCount: 1,
+    })
+  );
 
   it("affiche Conversion… sur le bouton PowerPoint", () => {
     renderTopBar();
     expect(screen.getByText("Conversion…")).toBeInTheDocument();
   });
 
-  it("tous les boutons d'action sont désactivés", () => {
+  it("les boutons d'ajout restent actifs pendant la conversion — les nouveaux fichiers se mettent en file", () => {
     renderTopBar();
-    expect(screen.getByText("Conversion…")).toBeDisabled();
-    expect(screen.getByText(/Ajouter des PDFs/)).toBeDisabled();
+    expect(screen.getByText("Conversion…")).not.toBeDisabled();
+    expect(screen.getByText(/Ajouter des PDFs/)).not.toBeDisabled();
+  });
+
+  it("le bouton Générer reste désactivé tant qu'un job de fond est en cours", () => {
+    useMergeStore.setState({ items: [makePdf("a")] });
+    renderTopBar();
+    expect(screen.getByText(/Générer PDF/)).toBeDisabled();
+  });
+});
+
+describe("TopBar — état extracting (détection en cours)", () => {
+  beforeEach(() =>
+    useMergeStore.setState({ status: "extracting", items: [makePdf("a")], pdfPendingCount: 1 })
+  );
+
+  it("les boutons d'ajout restent actifs pour permettre de mettre d'autres fichiers en file", () => {
+    renderTopBar();
+    expect(screen.getByText(/Ajout PowerPoint/)).not.toBeDisabled();
+    expect(screen.getByText(/Ajouter des PDFs/)).not.toBeDisabled();
+  });
+
+  it("le bouton Générer reste désactivé", () => {
+    renderTopBar();
+    expect(screen.getByText(/Générer PDF/)).toBeDisabled();
   });
 });
 
