@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.17.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.16.1...v3.17.0) (2026-06-21)
+
+
+### Features
+
+* add toggle buttons ([#59](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/59)) ([fd1e6fc](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/fd1e6fc201f267f20e536f3754114014f60b3d62))
+
 ## [3.16.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.16.0...v3.16.1) (2026-06-20)
 
 
