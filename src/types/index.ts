@@ -1,6 +1,7 @@
 import type { OwnerInfo } from "../services/ownerExtractor";
+import type { PerformanceLevel } from "../utils/performanceSettings";
 
-export type { OwnerInfo };
+export type { OwnerInfo, PerformanceLevel };
 
 export type Rotation = 0 | 90 | 180 | 270;
 

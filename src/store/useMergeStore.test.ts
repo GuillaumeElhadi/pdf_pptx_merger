@@ -39,6 +39,7 @@ function makeSlide(id: string, slideIndex = 0): SlideItem {
 }
 
 function resetStore() {
+  localStorage.clear();
   useMergeStore.setState({
     pptxSources: [],
     items: [],
@@ -49,6 +50,7 @@ function resetStore() {
     lastOutputPath: null,
     ownersDetectionEnabled: false,
     rotationDetectionEnabled: false,
+    performanceLevel: "balanced",
   });
 }
 
@@ -548,48 +550,56 @@ describe("useMergeStore — addPdfs", () => {
   });
 
   it("traite plusieurs PDFs avec une concurrence bornée (pas tout en séquentiel)", async () => {
-    useMergeStore.setState({ ownersDetectionEnabled: true });
+    // performanceLevel "balanced" dérive sa concurrence du nombre de cœurs de la machine de
+    // test (navigator.hardwareConcurrency), ce qui rendrait l'assertion "ni tout séquentiel,
+    // ni tout parallèle" non déterministe. On stub un nombre de cœurs fixe pour la durée du test.
+    vi.stubGlobal("navigator", { hardwareConcurrency: 3 });
+    try {
+      useMergeStore.setState({ ownersDetectionEnabled: true, performanceLevel: "balanced" });
 
-    let active = 0;
-    let maxActive = 0;
-    const releasers: Array<() => void> = [];
+      let active = 0;
+      let maxActive = 0;
+      const releasers: Array<() => void> = [];
 
-    vi.mocked(extractOwners).mockImplementation(async () => {
-      active++;
-      maxActive = Math.max(maxActive, active);
-      await new Promise<void>((resolve) => releasers.push(() => resolve()));
-      active--;
-      return {
-        owners: [],
-        pageOwners: new Map(),
-        pageRotationCorrections: new Map(),
-        fileMetric: emptyFileMetric(),
-      };
-    });
-    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf", "/b.pdf", "/c.pdf", "/d.pdf"]);
+      vi.mocked(extractOwners).mockImplementation(async () => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise<void>((resolve) => releasers.push(() => resolve()));
+        active--;
+        return {
+          owners: [],
+          pageOwners: new Map(),
+          pageRotationCorrections: new Map(),
+          fileMetric: emptyFileMetric(),
+        };
+      });
+      vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf", "/b.pdf", "/c.pdf", "/d.pdf"]);
 
-    const addPdfsPromise = useMergeStore.getState().addPdfs();
+      const addPdfsPromise = useMergeStore.getState().addPdfs();
 
-    // Let microtasks settle so every initially-launched worker has started and is now
-    // blocked on its own deferred promise.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(maxActive).toBeGreaterThan(1); // more than one file in flight at once
-    expect(maxActive).toBeLessThan(4); // but not all 4 at once — concurrency is bounded
-
-    // Drain all pending extractions in rounds so addPdfs() can resolve, regardless of
-    // how many workers are active per round.
-    for (let round = 0; round < 4; round++) {
-      const toRelease = releasers.splice(0, releasers.length);
-      toRelease.forEach((r) => r());
+      // Let microtasks settle so every initially-launched worker has started and is now
+      // blocked on its own deferred promise.
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+
+      expect(maxActive).toBeGreaterThan(1); // more than one file in flight at once
+      expect(maxActive).toBeLessThan(4); // but not all 4 at once — concurrency is bounded
+
+      // Drain all pending extractions in rounds so addPdfs() can resolve, regardless of
+      // how many workers are active per round.
+      for (let round = 0; round < 4; round++) {
+        const toRelease = releasers.splice(0, releasers.length);
+        toRelease.forEach((r) => r());
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+
+      await addPdfsPromise;
+      expect(useMergeStore.getState().items).toHaveLength(4);
+    } finally {
+      vi.unstubAllGlobals();
     }
-
-    await addPdfsPromise;
-    expect(useMergeStore.getState().items).toHaveLength(4);
   });
 
   it("status est 'idle' et progress est null après l'extraction complète", async () => {
@@ -721,6 +731,47 @@ describe("useMergeStore — addPdfs", () => {
     const item = useMergeStore.getState().items[0] as PdfItem;
     expect(item.owners).toEqual([{ code: "0000001", name: "OWNER A" }]);
     expect(item.pageRotationCorrections).toBeUndefined();
+  });
+});
+
+describe("useMergeStore — performanceLevel", () => {
+  beforeEach(resetStore);
+
+  it("démarre à 'balanced' par défaut", () => {
+    expect(useMergeStore.getState().performanceLevel).toBe("balanced");
+  });
+
+  it("setPerformanceLevel met à jour le state", () => {
+    useMergeStore.getState().setPerformanceLevel("performance");
+    expect(useMergeStore.getState().performanceLevel).toBe("performance");
+  });
+
+  it("setPerformanceLevel persiste le choix en localStorage", () => {
+    useMergeStore.getState().setPerformanceLevel("economical");
+    expect(localStorage.getItem("pdf-merger-performance-level")).toBe("economical");
+  });
+
+  it("processPdfItems utilise la concurrence dérivée de performanceLevel (pas une constante figée)", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true, performanceLevel: "economical" }); // → 1 worker
+    let maxConcurrent = 0;
+    let active = 0;
+    vi.mocked(extractOwners).mockImplementation(async () => {
+      active++;
+      maxConcurrent = Math.max(maxConcurrent, active);
+      await Promise.resolve();
+      active--;
+      return {
+        owners: [],
+        pageOwners: new Map(),
+        pageRotationCorrections: new Map(),
+        fileMetric: emptyFileMetric(),
+      };
+    });
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf", "/b.pdf", "/c.pdf"]);
+
+    await useMergeStore.getState().addPdfs();
+
+    expect(maxConcurrent).toBe(1); // niveau "economical" → concurrence de 1, jamais plus
   });
 });
 

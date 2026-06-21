@@ -117,4 +117,42 @@ describe("createWorkerPool", () => {
     await expect(pool.acquire()).rejects.toThrow("init failed");
     expect(factory).toHaveBeenCalledTimes(2); // not retried on the second acquire()
   });
+
+  it("drainIdle() retire et retourne tous les workers inactifs", async () => {
+    const factory = vi.fn().mockImplementation(async () => ({}));
+    const pool = createWorkerPool(2, factory);
+
+    const w1 = await pool.acquire();
+    const w2 = await pool.acquire();
+    pool.release(w1);
+    pool.release(w2);
+
+    const drained = pool.drainIdle();
+    expect(drained).toHaveLength(2);
+    expect(drained).toEqual(expect.arrayContaining([w1, w2]));
+  });
+
+  it("drainIdle() n'inclut pas les workers actuellement acquis", async () => {
+    const factory = vi.fn().mockImplementation(async () => ({}));
+    const pool = createWorkerPool(2, factory);
+
+    const w1 = await pool.acquire();
+    const w2 = await pool.acquire();
+    pool.release(w1); // w1 idle, w2 toujours acquis
+    void w2; // held in pool, not released
+
+    const drained = pool.drainIdle();
+    expect(drained).toEqual([w1]);
+  });
+
+  it("drainIdle() vide le pool interne — un appel suivant ne retourne rien tant qu'aucun nouveau release()", async () => {
+    const factory = vi.fn().mockImplementation(async () => ({}));
+    const pool = createWorkerPool(1, factory);
+
+    const w1 = await pool.acquire();
+    pool.release(w1);
+    pool.drainIdle();
+
+    expect(pool.drainIdle()).toEqual([]);
+  });
 });

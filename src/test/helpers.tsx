@@ -12,6 +12,7 @@ import type { Update } from "@tauri-apps/plugin-updater";
 // ── Store reset ───────────────────────────────────────────────────────────────
 
 export function resetStore() {
+  localStorage.clear();
   useMergeStore.setState({
     pptxSources: [],
     items: [],
@@ -22,6 +23,7 @@ export function resetStore() {
     lastOutputPath: null,
     ownersDetectionEnabled: false,
     rotationDetectionEnabled: false,
+    performanceLevel: "balanced",
   });
 }
 

@@ -1,6 +1,7 @@
 export interface WorkerPool<T> {
   acquire(): Promise<T>;
   release(worker: T): void;
+  drainIdle(): T[];
 }
 
 /**
@@ -38,6 +39,12 @@ export function createWorkerPool<T>(size: number, factory: () => Promise<T>): Wo
       } else {
         idle.push(worker);
       }
+    },
+
+    drainIdle(): T[] {
+      const drained = idle;
+      idle = [];
+      return drained;
     },
   };
 }
