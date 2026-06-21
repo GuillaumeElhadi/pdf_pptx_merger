@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.18.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.17.0...v3.18.0) (2026-06-21)
+
+
+### Features
+
+* ocr rotation dedup concurrency pool ([#61](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/61)) ([028f056](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/028f056dab2f980a2c9302e0e3387ddb86d3540a))
+
 ## [3.17.0](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.16.1...v3.17.0) (2026-06-21)
 
 
