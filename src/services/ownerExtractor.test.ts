@@ -260,6 +260,40 @@ describe("extractOwners — structure réelle avec adresse postale", () => {
   });
 });
 
+describe("extractOwners — faux positif tableau financier", () => {
+  it("ne détecte pas de propriétaire dans une ligne comptable 'Copropriétaires' suivie d'un long tableau de chiffres", async () => {
+    // Reproduces a real "État financier après répartition" annex (ANNEXE 1): the word
+    // "Copropriétaires" appears as an accounting category label, followed by many rows
+    // that all start with an account code digit, ending in a "Total" line. There is no
+    // owner code/name here at all — the unbounded skip-while-digit-prefixed loop used to
+    // walk through the entire table and return the "Total" row as a fake owner name.
+    mockDocument([
+      {
+        width: 842,
+        height: 595,
+        items: [
+          textItem("Copropriétaires", 500),
+          textItem("450000", 496), // account code, not an owner code — happens to satisfy the i+1 numeric-line check
+          textItem("40 Fournisseurs 2 881.05 1707.47", 492),
+          textItem("411900 CLIENTS DIVERS 11 592.80 21073.54", 488),
+          textItem("46 Débit./Crédit. divers", 484),
+          textItem("462000 CREDITEURS DIVERS", 480),
+          textItem("462950 ANCIEN SYNDIC", 476),
+          textItem("47 Compte d'attente", 472),
+          textItem("471000 ATTENTE IMMEUBLE DEBIT", 468),
+          textItem("471090 ROMPU DEBITEUR 0.02", 464),
+          textItem("472000 ATTENTE IMMEUBLE CREDIT 143 175.96", 460),
+          textItem("472010 FACTURES DIV. A IMPUTER", 456),
+          textItem("472090 ROMPU CREDITEUR 0.01", 452),
+          textItem("Total Il 184 867.84 22 781.03 Total 994 314.98 571 176.28", 448),
+        ],
+      },
+    ]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([]);
+  });
+});
+
 describe("extractOwners — variantes d'accentuation", () => {
   it("accepte 'Coproprietaire' sans accent sur le 'é'", async () => {
     mockDocument([
