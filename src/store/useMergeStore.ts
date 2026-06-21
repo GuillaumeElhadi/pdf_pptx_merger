@@ -92,6 +92,18 @@ interface MergeStore {
   lastOutputPath: string | null;
   lastOutputDir: string | null;
 
+  // ── Background processing queues ─────────────────────────────────────────
+  // PDF detection (owner/rotation) and PPTX conversion run on two independent
+  // queues so they proceed in parallel instead of one blocking the other.
+  // `pdfPendingCount`/`pptxPendingCount` count jobs queued or running on each
+  // queue — used to keep generate() blocked until both have drained.
+  // `pptxTask` mirrors the PDF queue's status/progress (carried by the legacy
+  // status/statusMessage/progress fields) for PPTX loading, so the UI can show
+  // both lines at once instead of one queue's message clobbering the other's.
+  pdfPendingCount: number;
+  pptxPendingCount: number;
+  pptxTask: { message: string; progress: number | null } | null;
+
   // ── Detection toggles ─────────────────────────────────────────────────────
   ownersDetectionEnabled: boolean;
   rotationDetectionEnabled: boolean;
@@ -120,20 +132,50 @@ export const useMergeStore = create<MergeStore>((set, get) => {
    * Only the fields for enabled features are written back, so a partial run (e.g.
    * detectRotation-only) never clobbers data from a previous run of the other feature.
    */
-  let processingChain: Promise<void> = Promise.resolve();
+  // Two independent FIFO queues: one for PDF detection batches, one for PPTX
+  // conversions. Jobs within a queue still run one at a time (so e.g. two
+  // PPTX loads don't race on slide-color assignment), but the two queues run
+  // concurrently — adding PDFs no longer blocks a PowerPoint import, or vice
+  // versa. `countKey` lets each queue track its own pending-job counter.
+  function makeQueue(countKey: "pdfPendingCount" | "pptxPendingCount") {
+    let chain: Promise<void> = Promise.resolve();
+    return function enqueue(task: () => Promise<void>): Promise<void> {
+      set((s) => ({ [countKey]: s[countKey] + 1 }) as Partial<MergeStore>);
+      const run = async () => {
+        try {
+          await task();
+        } finally {
+          set((s) => ({ [countKey]: Math.max(0, s[countKey] - 1) }) as Partial<MergeStore>);
+        }
+      };
+      chain = chain.then(run, run);
+      return chain;
+    };
+  }
+
+  const enqueuePdfTask = makeQueue("pdfPendingCount");
+  const enqueuePptxTask = makeQueue("pptxPendingCount");
+
+  // Shared across every queued/in-flight processPdfItems batch so the "done/total"
+  // counter reflects the whole session instead of resetting per batch — e.g. adding
+  // 4 more files while a first batch of 4 is still extracting shows "x/8", not a
+  // fresh "0/4" once the first batch finishes. Reset to 0 once the whole queue drains.
+  let extractionTotal = 0;
+  let extractionDone = 0;
 
   async function processPdfItems(
     targetItems: PdfItem[],
     options: { detectOwners: boolean; detectRotation: boolean }
   ) {
     if (targetItems.length === 0) return;
-    const run = async () => {
-      set({
-        status: "extracting",
-        statusMessage: strings.status.extractingOwners(0, targetItems.length),
-        progress: 0,
-      });
+    extractionTotal += targetItems.length;
+    set({
+      status: "extracting",
+      statusMessage: strings.status.extractingOwners(extractionDone, extractionTotal),
+      progress: extractionDone / extractionTotal,
+    });
 
+    const run = async () => {
       const tempDir = await Bridge.getTempDir();
 
       let done = 0;
@@ -156,6 +198,7 @@ export const useMergeStore = create<MergeStore>((set, get) => {
                 await extractOwners(item.pdfPath, options);
               fileMetrics.push(fileMetric);
               done++;
+              extractionDone++;
               for (const o of owners) {
                 if (!allFoundOwners.has(o.name)) allFoundOwners.set(o.name, o);
               }
@@ -206,11 +249,12 @@ export const useMergeStore = create<MergeStore>((set, get) => {
                   }
                   return next;
                 }),
-                progress: done / targetItems.length,
-                statusMessage: strings.status.extractingOwners(done, targetItems.length),
+                progress: extractionDone / extractionTotal,
+                statusMessage: strings.status.extractingOwners(extractionDone, extractionTotal),
               }));
             } catch (e) {
               done++;
+              extractionDone++;
               failedCount++;
               logger.warn(
                 "processPdfItems:extractOwners",
@@ -220,8 +264,8 @@ export const useMergeStore = create<MergeStore>((set, get) => {
                 items: s.items.map((i) =>
                   i.id === item.id ? { ...i, ownersError: String(e) } : i
                 ),
-                progress: done / targetItems.length,
-                statusMessage: strings.status.extractingOwners(done, targetItems.length),
+                progress: extractionDone / extractionTotal,
+                statusMessage: strings.status.extractingOwners(extractionDone, extractionTotal),
               }));
             }
           }
@@ -258,18 +302,29 @@ export const useMergeStore = create<MergeStore>((set, get) => {
           }
         }
 
-        set({
-          status: "idle",
-          progress: null,
-          statusMessage:
-            allFoundOwners.size > 0
-              ? strings.status.pdfsAddedWithOwners(targetItems.length, allFoundOwners.size)
-              : strings.status.pdfsAdded(targetItems.length),
-        });
+        // Only settle back to idle once every queued/in-flight batch (including ones added
+        // while this one was running) has finished — otherwise a batch still in the queue
+        // would have its "extracting" status briefly overwritten by this batch's completion.
+        if (extractionDone >= extractionTotal) {
+          extractionTotal = 0;
+          extractionDone = 0;
+          set({
+            status: "idle",
+            progress: null,
+            statusMessage:
+              allFoundOwners.size > 0
+                ? strings.status.pdfsAddedWithOwners(targetItems.length, allFoundOwners.size)
+                : strings.status.pdfsAdded(targetItems.length),
+          });
+        } else {
+          set({
+            progress: extractionDone / extractionTotal,
+            statusMessage: strings.status.extractingOwners(extractionDone, extractionTotal),
+          });
+        }
       }
     };
-    processingChain = processingChain.then(run, run);
-    return processingChain;
+    return enqueuePdfTask(run);
   }
 
   return {
@@ -281,6 +336,9 @@ export const useMergeStore = create<MergeStore>((set, get) => {
     progress: null,
     lastOutputPath: null,
     lastOutputDir: null,
+    pdfPendingCount: 0,
+    pptxPendingCount: 0,
+    pptxTask: null,
     ownersDetectionEnabled: false,
     rotationDetectionEnabled: false,
     performanceLevel: loadPerformanceLevel(),
@@ -298,43 +356,49 @@ export const useMergeStore = create<MergeStore>((set, get) => {
 
       logger.action("loadPptx", { path });
 
-      const color = PPTX_COLORS[get().pptxSources.length % PPTX_COLORS.length];
+      await enqueuePptxTask(async () => {
+        const color = PPTX_COLORS[get().pptxSources.length % PPTX_COLORS.length];
 
-      set({ status: "converting", statusMessage: strings.status.converting });
+        set({ pptxTask: { message: strings.status.converting, progress: null } });
 
-      try {
-        const mergedPdf = await Bridge.convertPptx(path);
-        set({ status: "extracting", statusMessage: strings.status.extracting });
-        const count = await Bridge.getPdfPageCount(mergedPdf);
+        try {
+          const mergedPdf = await Bridge.convertPptx(path);
+          set({ pptxTask: { message: strings.status.extracting, progress: null } });
+          const count = await Bridge.getPdfPageCount(mergedPdf);
 
-        const sourceId = uuid();
-        const newSource: PptxSource = {
-          id: sourceId,
-          pptxPath: path,
-          slidePdf: mergedPdf,
-          slideCount: count,
-          color,
-        };
+          const sourceId = uuid();
+          const newSource: PptxSource = {
+            id: sourceId,
+            pptxPath: path,
+            slidePdf: mergedPdf,
+            slideCount: count,
+            color,
+          };
 
-        const slideItems: SlideItem[] = Array.from({ length: count }, (_, i) => ({
-          id: uuid(),
-          type: "slide",
-          slideIndex: i,
-          rotation: 0,
-          pptxSourceId: sourceId,
-        }));
+          const slideItems: SlideItem[] = Array.from({ length: count }, (_, i) => ({
+            id: uuid(),
+            type: "slide",
+            slideIndex: i,
+            rotation: 0,
+            pptxSourceId: sourceId,
+          }));
 
-        set((s) => ({
-          pptxSources: [...s.pptxSources, newSource],
-          items: [...s.items, ...slideItems],
-          status: "idle",
-          statusMessage: strings.status.pptxLoaded(count),
-        }));
-        logger.info("loadPptx", `OK — ${count} slides from "${path}"`);
-      } catch (e) {
-        logger.error("loadPptx", e);
-        set({ status: "error", statusMessage: String(e) });
-      }
+          set((s) => ({
+            pptxSources: [...s.pptxSources, newSource],
+            items: [...s.items, ...slideItems],
+            pptxTask: null,
+            // Only claim the shared status line when nothing else owns it — a PDF batch
+            // or a merge running in parallel keeps its own message visible undisturbed.
+            ...(s.pdfPendingCount === 0 && s.status !== "merging"
+              ? { status: "idle" as const, statusMessage: strings.status.pptxLoaded(count) }
+              : {}),
+          }));
+          logger.info("loadPptx", `OK — ${count} slides from "${path}"`);
+        } catch (e) {
+          logger.error("loadPptx", e);
+          set({ pptxTask: null, status: "error", statusMessage: String(e) });
+        }
+      });
     },
 
     // ── addPdfs ──────────────────────────────────────────────────────────────
@@ -442,7 +506,15 @@ export const useMergeStore = create<MergeStore>((set, get) => {
 
     // ── generate ─────────────────────────────────────────────────────────────
     generate: async () => {
-      const { items, pptxSources, lastOutputPath, lastOutputDir, ownersDetectionEnabled } = get();
+      const {
+        items,
+        pptxSources,
+        lastOutputPath,
+        lastOutputDir,
+        ownersDetectionEnabled,
+        pdfPendingCount,
+        pptxPendingCount,
+      } = get();
       const hasPdf = items.some((i) => i.type === "pdf");
       if (!hasPdf) return;
 
@@ -452,8 +524,10 @@ export const useMergeStore = create<MergeStore>((set, get) => {
       const hasPendingExtraction =
         ownersDetectionEnabled &&
         items.some((i) => i.type === "pdf" && i.owners === undefined && !i.ownersError);
-      if (hasPendingExtraction) {
-        set({ statusMessage: strings.status.ownersNotReady });
+      // Guard: a background job (PDF detection batch, PPTX conversion) queued via addPdfs/loadPptx
+      // is still running — its results aren't reflected in `items`/`pptxSources` yet.
+      if (hasPendingExtraction || pdfPendingCount > 0 || pptxPendingCount > 0) {
+        set({ statusMessage: strings.status.processingNotReady });
         return;
       }
 

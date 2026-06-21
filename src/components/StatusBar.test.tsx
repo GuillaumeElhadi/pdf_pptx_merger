@@ -141,3 +141,28 @@ describe("StatusBar — état merging avec progression", () => {
     expect(fill).toBeInTheDocument();
   });
 });
+
+describe("StatusBar — extraction PDF et conversion PPTX en parallèle", () => {
+  it("affiche les deux messages sur deux lignes distinctes en même temps", () => {
+    useMergeStore.setState({
+      status: "extracting",
+      statusMessage: "Analyse des propriétaires… 1/4",
+      pptxTask: { message: "Conversion du PowerPoint en cours…", progress: null },
+    });
+    render(<StatusBar update={null} currentVersion="3.8.0" onUpdateClick={() => {}} />);
+    expect(screen.getByText("Analyse des propriétaires… 1/4")).toBeInTheDocument();
+    expect(screen.getByText("Conversion du PowerPoint en cours…")).toBeInTheDocument();
+    // Two independent lines, each with its own spinner.
+    expect(screen.getAllByText("⏳")).toHaveLength(2);
+  });
+
+  it("n'affiche pas de seconde ligne quand aucune conversion PPTX n'est en cours", () => {
+    useMergeStore.setState({
+      status: "extracting",
+      statusMessage: "Analyse des propriétaires… 1/4",
+      pptxTask: null,
+    });
+    render(<StatusBar update={null} currentVersion="3.8.0" onUpdateClick={() => {}} />);
+    expect(screen.getAllByText("⏳")).toHaveLength(1);
+  });
+});

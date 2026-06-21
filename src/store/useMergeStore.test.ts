@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useMergeStore } from "./useMergeStore";
 import { Bridge } from "../services/bridge";
+import { strings } from "../strings";
 import type { PdfItem, SlideItem } from "../types";
 
 const TEST_SOURCE_ID = "test-source";
@@ -48,6 +49,9 @@ function resetStore() {
     statusMessage: "Prêt.",
     progress: null,
     lastOutputPath: null,
+    pdfPendingCount: 0,
+    pptxPendingCount: 0,
+    pptxTask: null,
     ownersDetectionEnabled: false,
     rotationDetectionEnabled: false,
     performanceLevel: "balanced",
@@ -732,6 +736,68 @@ describe("useMergeStore — addPdfs", () => {
     expect(item.owners).toEqual([{ code: "0000001", name: "OWNER A" }]);
     expect(item.pageRotationCorrections).toBeUndefined();
   });
+
+  it("met en file un second appel à addPdfs lancé pendant qu'un premier traite encore ses fichiers", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
+
+    const releasers: Array<() => void> = [];
+    vi.mocked(extractOwners).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releasers.push(() =>
+            resolve({
+              owners: [],
+              pageOwners: new Map(),
+              pageRotationCorrections: new Map(),
+              fileMetric: emptyFileMetric(),
+            })
+          );
+        })
+    );
+
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValueOnce(["/a.pdf"]);
+    const firstAdd = useMergeStore.getState().addPdfs();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // First batch is mid-extraction: item already visible, one background job in flight.
+    expect(useMergeStore.getState().items.map((i) => i.id)).toHaveLength(1);
+    expect(useMergeStore.getState().pdfPendingCount).toBe(1);
+    expect(useMergeStore.getState().statusMessage).toBe(strings.status.extractingOwners(0, 1));
+
+    // A second addPdfs() call must be accepted immediately — its item is appended right
+    // away — instead of being blocked until the first batch's detection finishes.
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValueOnce(["/b.pdf"]);
+    const secondAdd = useMergeStore.getState().addPdfs();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useMergeStore.getState().items.map((i) => (i as PdfItem).pdfPath)).toEqual([
+      "/a.pdf",
+      "/b.pdf",
+    ]);
+    // Second batch is queued behind the first — not started concurrently.
+    expect(extractOwners).toHaveBeenCalledTimes(1);
+    expect(useMergeStore.getState().pdfPendingCount).toBe(2);
+    // Regression: the counter must immediately reflect the combined total (0/2), not wait
+    // for the first batch to finish before showing the new file as part of the count.
+    expect(useMergeStore.getState().statusMessage).toBe(strings.status.extractingOwners(0, 2));
+
+    // Release the first batch's extraction — the queue should now move on to the second.
+    releasers[0]();
+    await firstAdd;
+    expect(extractOwners).toHaveBeenCalledTimes(2);
+    expect(useMergeStore.getState().pdfPendingCount).toBe(1);
+    // First file done, second batch still running — counter continues from 1/2, it
+    // doesn't reset to "0/1" for the still-in-flight second batch.
+    expect(useMergeStore.getState().statusMessage).toBe(strings.status.extractingOwners(1, 2));
+    expect(useMergeStore.getState().status).toBe("extracting");
+
+    releasers[1]();
+    await secondAdd;
+    expect(useMergeStore.getState().pdfPendingCount).toBe(0);
+    expect(useMergeStore.getState().status).toBe("idle");
+  });
 });
 
 describe("useMergeStore — performanceLevel", () => {
@@ -826,5 +892,67 @@ describe("useMergeStore — loadPptx", () => {
     const { items } = useMergeStore.getState();
     expect(items.some((i) => i.id === "existant")).toBe(true);
     expect(items.filter((i) => i.type === "slide")).toHaveLength(2);
+  });
+
+  it("traite une extraction de PDF et une conversion PPTX en parallèle, sans que l'une attende l'autre", async () => {
+    useMergeStore.setState({ ownersDetectionEnabled: true });
+
+    let releaseExtraction: (() => void) | undefined;
+    vi.mocked(extractOwners).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseExtraction = () =>
+            resolve({
+              owners: [],
+              pageOwners: new Map(),
+              pageRotationCorrections: new Map(),
+              fileMetric: emptyFileMetric(),
+            });
+        })
+    );
+    vi.mocked(Bridge.pickPdfFiles).mockResolvedValue(["/a.pdf"]);
+    const addPdfsPromise = useMergeStore.getState().addPdfs();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useMergeStore.getState().pdfPendingCount).toBe(1);
+    expect(useMergeStore.getState().status).toBe("extracting");
+
+    let releaseConvert: (() => void) | undefined;
+    vi.mocked(Bridge.pickPptxFile).mockResolvedValue("/deck.pptx");
+    vi.mocked(Bridge.convertPptx).mockImplementation(
+      () => new Promise((resolve) => (releaseConvert = () => resolve("/tmp/slides.pdf")))
+    );
+    vi.mocked(Bridge.getPdfPageCount).mockResolvedValue(2);
+    const loadPptxPromise = useMergeStore.getState().loadPptx();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The PPTX conversion starts immediately — it does NOT wait for the PDF
+    // extraction queue to drain. Both progress lines are active at once.
+    expect(Bridge.convertPptx).toHaveBeenCalledOnce();
+    expect(useMergeStore.getState().pdfPendingCount).toBe(1);
+    expect(useMergeStore.getState().pptxPendingCount).toBe(1);
+    expect(useMergeStore.getState().status).toBe("extracting");
+    expect(useMergeStore.getState().pptxTask).toEqual({
+      message: strings.status.converting,
+      progress: null,
+    });
+
+    releaseConvert?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // PPTX finishes first: the PDF extraction's status line is still visible afterwards —
+    // the PPTX completion does not clobber it.
+    await loadPptxPromise;
+    expect(useMergeStore.getState().pptxSources).toHaveLength(1);
+    expect(useMergeStore.getState().pptxPendingCount).toBe(0);
+    expect(useMergeStore.getState().pptxTask).toBeNull();
+    expect(useMergeStore.getState().status).toBe("extracting");
+
+    releaseExtraction?.();
+    await addPdfsPromise;
+    expect(useMergeStore.getState().pdfPendingCount).toBe(0);
+    expect(useMergeStore.getState().status).toBe("idle");
   });
 });

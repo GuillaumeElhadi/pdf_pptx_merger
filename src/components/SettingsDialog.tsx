@@ -25,9 +25,11 @@ export function SettingsDialog({ onClose }: Props) {
     performanceLevel,
     setPerformanceLevel,
     status,
+    pdfPendingCount,
+    pptxPendingCount,
   } = useMergeStore();
 
-  const busy = status === "converting" || status === "merging" || status === "extracting";
+  const busy = status === "merging" || pdfPendingCount > 0 || pptxPendingCount > 0;
   const maxWorkers = detectMaxWorkers();
   const resolvedWorkers = workerCountForLevel(performanceLevel, maxWorkers);
 

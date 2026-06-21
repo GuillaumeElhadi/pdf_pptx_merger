@@ -110,6 +110,9 @@ function resetStore() {
     progress: null,
     lastOutputPath: null,
     lastOutputDir: null,
+    pdfPendingCount: 0,
+    pptxPendingCount: 0,
+    pptxTask: null,
     ownersDetectionEnabled: false,
     rotationDetectionEnabled: false,
   });
@@ -161,7 +164,7 @@ describe("generate — Z : aucun déclencheur", () => {
 
     expect(Bridge.pickSaveLocation).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
-    expect(useMergeStore.getState().statusMessage).toBe(strings.status.ownersNotReady);
+    expect(useMergeStore.getState().statusMessage).toBe(strings.status.processingNotReady);
   });
 
   it("génère normalement si owners === undefined mais que le toggle propriétaires est désactivé", async () => {
@@ -175,7 +178,7 @@ describe("generate — Z : aucun déclencheur", () => {
     await useMergeStore.getState().generate();
 
     expect(writeFile).toHaveBeenCalled();
-    expect(useMergeStore.getState().statusMessage).not.toBe(strings.status.ownersNotReady);
+    expect(useMergeStore.getState().statusMessage).not.toBe(strings.status.processingNotReady);
   });
 
   it("génère normalement si l'extraction a échoué (ownersError défini, owners undefined)", async () => {

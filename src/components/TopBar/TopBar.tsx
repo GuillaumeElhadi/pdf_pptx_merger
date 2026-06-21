@@ -6,7 +6,16 @@ import { useTheme } from "../../hooks/useTheme";
 import { SettingsDialog } from "../SettingsDialog";
 
 export function TopBar() {
-  const { pptxSources, items, status, loadPptx, addPdfs } = useMergeStore();
+  const {
+    pptxSources,
+    items,
+    status,
+    pdfPendingCount,
+    pptxPendingCount,
+    pptxTask,
+    loadPptx,
+    addPdfs,
+  } = useMergeStore();
   const [googleDrivePath, setGoogleDrivePath] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -15,10 +24,13 @@ export function TopBar() {
     Bridge.getGoogleDrivePath().then(setGoogleDrivePath);
   }, []);
 
-  const isConverting = status === "converting";
+  const isConverting = pptxTask !== null;
   const isMerging = status === "merging";
-  const busy = isConverting || isMerging || status === "extracting";
   const hasPdf = items.some((i) => i.type === "pdf");
+  // Adding files only needs to wait out the final merge — conversion/detection
+  // jobs run on their own background queues, so new files can keep being queued.
+  const addDisabled = isMerging;
+  const generateDisabled = !hasPdf || isMerging || pdfPendingCount > 0 || pptxPendingCount > 0;
 
   return (
     <header style={styles.bar}>
@@ -29,7 +41,7 @@ export function TopBar() {
           <button
             style={styles.btn}
             onClick={() => loadPptx()}
-            disabled={busy}
+            disabled={addDisabled}
             title={
               pptxSources.length === 0
                 ? strings.topBar.loadPptxNoFile
@@ -42,7 +54,7 @@ export function TopBar() {
             <button
               style={{ ...styles.btn, ...styles.driveBtn }}
               onClick={() => loadPptx(googleDrivePath)}
-              disabled={busy}
+              disabled={addDisabled}
               title={strings.topBar.googleDriveTooltip(googleDrivePath)}
             >
               ☁
@@ -51,14 +63,14 @@ export function TopBar() {
         </div>
 
         <div style={styles.btnGroup}>
-          <button style={styles.btn} onClick={() => addPdfs()} disabled={busy}>
+          <button style={styles.btn} onClick={() => addPdfs()} disabled={addDisabled}>
             {strings.topBar.addPdfs}
           </button>
           {googleDrivePath && (
             <button
               style={{ ...styles.btn, ...styles.driveBtn }}
               onClick={() => addPdfs(googleDrivePath)}
-              disabled={busy}
+              disabled={addDisabled}
               title={strings.topBar.googleDriveTooltip(googleDrivePath)}
             >
               ☁
@@ -71,9 +83,9 @@ export function TopBar() {
         style={{
           ...styles.btn,
           ...styles.generateBtn,
-          opacity: hasPdf && !busy ? 1 : 0.4,
+          opacity: !generateDisabled ? 1 : 0.4,
         }}
-        disabled={!hasPdf || busy}
+        disabled={generateDisabled}
         onClick={() => useMergeStore.getState().generate()}
       >
         {isMerging ? strings.topBar.generatePdfMerging : strings.topBar.generatePdf}

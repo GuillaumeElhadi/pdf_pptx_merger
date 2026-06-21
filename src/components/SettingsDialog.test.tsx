@@ -49,7 +49,7 @@ describe("SettingsDialog — interactions : toggles", () => {
   });
 
   it("désactive les deux toggles pendant un traitement en cours", () => {
-    useMergeStore.setState({ status: "extracting" });
+    useMergeStore.setState({ status: "extracting", pdfPendingCount: 1 });
     render(<SettingsDialog onClose={vi.fn()} />);
     expect(screen.getByLabelText(/Détecter propriétaires/)).toBeDisabled();
     expect(screen.getByLabelText(/Corriger orientation/)).toBeDisabled();
