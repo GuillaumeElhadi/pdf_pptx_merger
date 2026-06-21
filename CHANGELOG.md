@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.19.2](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.19.1...v3.19.2) (2026-06-21)
+
+
+### Bug Fixes
+
+* improve owner detection for CARREFOUR PROPERTY GESTION letterhead format ([#68](https://github.com/GuillaumeElhadi/pdf_pptx_merger/issues/68)) ([253ab3d](https://github.com/GuillaumeElhadi/pdf_pptx_merger/commit/253ab3d2aeed726ee98c1c637d955afe1e7e1b77))
+
 ## [3.19.1](https://github.com/GuillaumeElhadi/pdf_pptx_merger/compare/v3.19.0...v3.19.1) (2026-06-21)
 
 
