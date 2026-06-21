@@ -463,34 +463,41 @@ describe("extractOwners — carry-forward : pages sans label héritent du dernie
 });
 
 describe("extractOwners — fallback OCR (page sans texte)", () => {
-  it("appelle detectPageRotation puis ocrPage('crop') quand une page n'a aucun item texte", async () => {
-    vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR");
+  it("appelle detectPageRotation puis ocrPageWithAutoRotation quand une page n'a aucun item texte", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 0,
+    });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
     expect(detectPageRotation).toHaveBeenCalledWith(expect.anything());
-    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "crop", 0);
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
     expect(result.owners).toEqual([{ code: "0000001", name: "IMMO CARREFOUR" }]);
   });
 
-  it("n'appelle pas ocrPage('full') si ocrPage('crop') a trouvé un propriétaire", async () => {
-    vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR");
+  it("n'appelle pas ocrPage('full') si ocrPageWithAutoRotation a trouvé un propriétaire", async () => {
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 0,
+    });
     mockDocument([{ width: 595, height: 842, items: [] }]);
     await extractOwners("/doc.pdf");
-    expect(ocrPageWithAutoRotation).not.toHaveBeenCalled();
-    expect(ocrPage).toHaveBeenCalledTimes(1);
-    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "crop", 0);
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
+    expect(ocrPage).not.toHaveBeenCalled();
   });
 
-  it("escalade vers ocrPage('full', rotationCorrection) si le crop ne trouve pas de propriétaire", async () => {
+  it("escalade vers ocrPage('full', rotationCorrection) si l'auto-rotation ne trouve pas de propriétaire", async () => {
     vi.mocked(detectPageRotation).mockResolvedValueOnce(90);
-    vi.mocked(ocrPage)
-      .mockResolvedValueOnce("Texte sans propriétaire dans le bandeau") // crop → no owner
-      .mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER"); // full → owner
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Texte sans propriétaire dans le bandeau",
+      rotationCorrection: 90,
+    });
+    vi.mocked(ocrPage).mockResolvedValueOnce("Copropriétaire 0000042\nSARL DUPONT IMMOBILIER"); // full → owner
     mockDocument([{ width: 595, height: 842, items: [] }]);
     const result = await extractOwners("/doc.pdf");
     expect(detectPageRotation).toHaveBeenCalledWith(expect.anything());
-    expect(ocrPage).toHaveBeenNthCalledWith(1, expect.anything(), "crop", 90);
-    expect(ocrPage).toHaveBeenNthCalledWith(2, expect.anything(), "full", 90);
+    expect(ocrPageWithAutoRotation).toHaveBeenCalledTimes(1);
+    expect(ocrPage).toHaveBeenCalledWith(expect.anything(), "full", 90);
     expect(result.owners).toEqual([{ code: "0000042", name: "SARL DUPONT IMMOBILIER" }]);
   });
 
@@ -1194,6 +1201,25 @@ describe("extractOwners — Pattern 3 : validation du nom candidat", () => {
 });
 
 describe("extractOwners — options { detectOwners, detectRotation }", () => {
+  it("detectOwners=true seul sur une page image-only ROTATÉE: trouve le propriétaire via auto-rotation, indépendamment du toggle detectRotation", async () => {
+    // The page is a scanned (image-only) document that is actually rotated 90°, but since
+    // detectRotation is off, the code must NOT rely on detectPageRotation/rotationCorrection
+    // (which stays 0) to find the owner — it must search rotations itself, just like the
+    // hasText branch does via ocrPageWithAutoRotation.
+    vi.mocked(ocrPageWithAutoRotation).mockResolvedValue({
+      text: "Copropriétaire 0000001\nS.A.S. IMMO. CARREFOUR",
+      rotationCorrection: 90,
+    });
+
+    mockDocument([{ width: 595, height: 842, items: [], rotate: 0 }]);
+
+    const result = await extractOwners("/doc.pdf", { detectOwners: true, detectRotation: false });
+
+    expect(detectPageRotation).not.toHaveBeenCalled();
+    expect(result.owners).toEqual([{ code: "0000001", name: "IMMO CARREFOUR" }]);
+    expect(result.pageRotationCorrections.size).toBe(0);
+  });
+
   it("detectOwners=false: ne cherche pas de propriétaire même si du texte rotaté est trouvé", async () => {
     mockDocument([
       {

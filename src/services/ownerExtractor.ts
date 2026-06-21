@@ -307,10 +307,17 @@ export async function extractOwners(
         }
 
         if (options.detectOwners) {
-          const cropText = await ocrPage(page, "crop", rotationCorrection);
+          // Don't rely on `rotationCorrection` here — it's only computed when detectRotation
+          // is enabled, and stays 0 otherwise. Search rotations ourselves (same as the
+          // hasText branch) so owner detection works on rotated scans independently of the
+          // rotation toggle.
+          const { text: cropText, rotationCorrection: ocrRotation } = await ocrPageWithAutoRotation(
+            page,
+            (text) => matchOwner(toLines(text)) !== null
+          );
           owner = matchOwner(toLines(cropText));
           if (!owner) {
-            const fullText = await ocrPage(page, "full", rotationCorrection);
+            const fullText = await ocrPage(page, "full", rotationCorrection || ocrRotation);
             owner = matchOwner(toLines(fullText));
           }
         }
