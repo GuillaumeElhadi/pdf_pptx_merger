@@ -10,24 +10,24 @@ import { strings } from "../strings";
 import { logger } from "../utils/logger";
 import { RUN_LABEL, saveMetrics, summarizeBatch, type FileMetric } from "../utils/metrics";
 import { mapWithConcurrency } from "../utils/concurrency";
+import {
+  loadPerformanceLevel,
+  savePerformanceLevel,
+  workerCountForLevel,
+} from "../utils/performanceSettings";
+import { configureOcrWorkerPool } from "../services/ocrExtractor";
 import type {
   AppStatus,
   MergeItem,
   OwnerInfo,
   PdfItem,
+  PerformanceLevel,
   PptxSource,
   Rotation,
   SlideItem,
 } from "../types";
 
 const PPTX_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#06b6d4", "#ef4444"];
-
-/**
- * Max number of PDFs processed concurrently in processPdfItems. OCR (tesseract.js) runs on a
- * single shared worker regardless of this value, so this mainly overlaps the non-OCR work
- * (pdf.js load, getTextContent, canvas rendering) of one file with the OCR wait of another.
- */
-const FILE_PROCESSING_CONCURRENCY = 3;
 
 /**
  * Applies the page-1 rotation correction to every page of a PDF and saves the
@@ -98,6 +98,10 @@ interface MergeStore {
   setOwnersDetectionEnabled: (enabled: boolean) => void;
   setRotationDetectionEnabled: (enabled: boolean) => void;
 
+  // ── Performance settings ─────────────────────────────────────────────────
+  performanceLevel: PerformanceLevel;
+  setPerformanceLevel: (level: PerformanceLevel) => void;
+
   // ── Actions ───────────────────────────────────────────────────────────────
   loadPptx: (defaultPath?: string) => Promise<void>;
   addPdfs: (defaultPath?: string) => Promise<void>;
@@ -138,82 +142,90 @@ export const useMergeStore = create<MergeStore>((set, get) => {
       const batchStartedAt = new Date().toISOString();
       const fileMetrics: FileMetric[] = [];
       try {
-        await mapWithConcurrency(targetItems, FILE_PROCESSING_CONCURRENCY, async (item) => {
-          const filename = item.pdfPath.split(/[\\/]/).pop() ?? item.pdfPath;
-          logger.info(
-            "processPdfItems:extractOwners",
-            `start ${done + 1}/${targetItems.length} — ${filename}`
-          );
-          try {
-            const { owners, pageOwners, pageRotationCorrections, fileMetric } = await extractOwners(
-              item.pdfPath,
-              options
-            );
-            fileMetrics.push(fileMetric);
-            done++;
-            for (const o of owners) {
-              if (!allFoundOwners.has(o.name)) allFoundOwners.set(o.name, o);
-            }
-
-            let effectivePdfPath = item.pdfPath;
-            let autoRotated = item.autoRotated ?? false;
-            if (options.detectRotation && pageRotationCorrections.size > 0) {
-              try {
-                const correctedPath = await bakeRotationCorrections(
-                  item.pdfPath,
-                  pageRotationCorrections,
-                  tempDir
-                );
-                if (correctedPath) {
-                  effectivePdfPath = correctedPath;
-                  autoRotated = true;
-                  logger.info(
-                    "processPdfItems:bakeRotation",
-                    `rotated temp file → ${correctedPath}`
-                  );
-                }
-              } catch (bakeErr) {
-                logger.warn(
-                  "processPdfItems:bakeRotation",
-                  `failed for ${filename}: ${String(bakeErr)}`
-                );
-              }
-            }
-
+        await mapWithConcurrency(
+          targetItems,
+          workerCountForLevel(get().performanceLevel),
+          async (item) => {
+            const filename = item.pdfPath.split(/[\\/]/).pop() ?? item.pdfPath;
             logger.info(
               "processPdfItems:extractOwners",
-              `done  ${done}/${targetItems.length} — ${filename} (${owners.length} owner${owners.length !== 1 ? "s" : ""})`
+              `start ${done + 1}/${targetItems.length} — ${filename}`
             );
-            set((s) => ({
-              items: s.items.map((i) => {
-                if (i.id !== item.id) return i;
-                const next: PdfItem = { ...(i as PdfItem), pdfPath: effectivePdfPath, autoRotated };
-                if (options.detectOwners) {
-                  next.owners = owners;
-                  next.pageOwners = pageOwners;
+            try {
+              const { owners, pageOwners, pageRotationCorrections, fileMetric } =
+                await extractOwners(item.pdfPath, options);
+              fileMetrics.push(fileMetric);
+              done++;
+              for (const o of owners) {
+                if (!allFoundOwners.has(o.name)) allFoundOwners.set(o.name, o);
+              }
+
+              let effectivePdfPath = item.pdfPath;
+              let autoRotated = item.autoRotated ?? false;
+              if (options.detectRotation && pageRotationCorrections.size > 0) {
+                try {
+                  const correctedPath = await bakeRotationCorrections(
+                    item.pdfPath,
+                    pageRotationCorrections,
+                    tempDir
+                  );
+                  if (correctedPath) {
+                    effectivePdfPath = correctedPath;
+                    autoRotated = true;
+                    logger.info(
+                      "processPdfItems:bakeRotation",
+                      `rotated temp file → ${correctedPath}`
+                    );
+                  }
+                } catch (bakeErr) {
+                  logger.warn(
+                    "processPdfItems:bakeRotation",
+                    `failed for ${filename}: ${String(bakeErr)}`
+                  );
                 }
-                if (options.detectRotation) {
-                  next.pageRotationCorrections = pageRotationCorrections;
-                }
-                return next;
-              }),
-              progress: done / targetItems.length,
-              statusMessage: strings.status.extractingOwners(done, targetItems.length),
-            }));
-          } catch (e) {
-            done++;
-            failedCount++;
-            logger.warn(
-              "processPdfItems:extractOwners",
-              `fail  ${done}/${targetItems.length} — ${filename} — ${String(e)}`
-            );
-            set((s) => ({
-              items: s.items.map((i) => (i.id === item.id ? { ...i, ownersError: String(e) } : i)),
-              progress: done / targetItems.length,
-              statusMessage: strings.status.extractingOwners(done, targetItems.length),
-            }));
+              }
+
+              logger.info(
+                "processPdfItems:extractOwners",
+                `done  ${done}/${targetItems.length} — ${filename} (${owners.length} owner${owners.length !== 1 ? "s" : ""})`
+              );
+              set((s) => ({
+                items: s.items.map((i) => {
+                  if (i.id !== item.id) return i;
+                  const next: PdfItem = {
+                    ...(i as PdfItem),
+                    pdfPath: effectivePdfPath,
+                    autoRotated,
+                  };
+                  if (options.detectOwners) {
+                    next.owners = owners;
+                    next.pageOwners = pageOwners;
+                  }
+                  if (options.detectRotation) {
+                    next.pageRotationCorrections = pageRotationCorrections;
+                  }
+                  return next;
+                }),
+                progress: done / targetItems.length,
+                statusMessage: strings.status.extractingOwners(done, targetItems.length),
+              }));
+            } catch (e) {
+              done++;
+              failedCount++;
+              logger.warn(
+                "processPdfItems:extractOwners",
+                `fail  ${done}/${targetItems.length} — ${filename} — ${String(e)}`
+              );
+              set((s) => ({
+                items: s.items.map((i) =>
+                  i.id === item.id ? { ...i, ownersError: String(e) } : i
+                ),
+                progress: done / targetItems.length,
+                statusMessage: strings.status.extractingOwners(done, targetItems.length),
+              }));
+            }
           }
-        });
+        );
       } finally {
         const ownerNames = Array.from(allFoundOwners.values())
           .map((o) => `${o.name} (${o.code})`)
@@ -271,6 +283,7 @@ export const useMergeStore = create<MergeStore>((set, get) => {
     lastOutputDir: null,
     ownersDetectionEnabled: false,
     rotationDetectionEnabled: false,
+    performanceLevel: loadPerformanceLevel(),
 
     setSelectedIds: (ids) => set({ selectedIds: ids }),
     clearSelection: () => set({ selectedIds: new Set() }),
@@ -730,6 +743,14 @@ export const useMergeStore = create<MergeStore>((set, get) => {
       if (pending.length > 0) {
         void processPdfItems(pending, { detectOwners: false, detectRotation: true });
       }
+    },
+
+    // ── Performance settings ──────────────────────────────────────────────────
+    setPerformanceLevel: (level) => {
+      logger.action("setPerformanceLevel", { level });
+      savePerformanceLevel(level);
+      set({ performanceLevel: level });
+      configureOcrWorkerPool(workerCountForLevel(level));
     },
   };
 });
