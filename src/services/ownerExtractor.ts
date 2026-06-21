@@ -106,9 +106,17 @@ function matchOwner(orderedLines: string[]): OwnerInfo | null {
 
     if (!code) continue;
 
-    while (nameLineIndex < orderedLines.length && /^\d/.test(orderedLines[nameLineIndex])) {
+    // Real owner blocks have at most a street line and a postal-code line between the
+    // code and the name. An unbounded skip here lets an unrelated accounting table (one
+    // that merely mentions "Copropriétaires" as a category, with every row starting with
+    // an account-code digit) walk all the way down to a "Total" row and misreport it as
+    // the owner name — cap the skip so that case fails the match instead.
+    const MAX_NAME_LINE_SKIP = 3;
+    const skipLimit = Math.min(orderedLines.length, nameLineIndex + MAX_NAME_LINE_SKIP);
+    while (nameLineIndex < skipLimit && /^\d/.test(orderedLines[nameLineIndex])) {
       nameLineIndex++;
     }
+    if (nameLineIndex >= skipLimit) continue;
 
     const nameLine = orderedLines[nameLineIndex];
     if (!nameLine) continue;
