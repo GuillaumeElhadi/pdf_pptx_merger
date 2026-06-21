@@ -117,11 +117,6 @@ mod win_com {
     }
 
     unsafe fn do_convert(pptx_path: &str, out_pdf: &str) -> Result<(), String> {
-        let pptx_path = super::normalize_path(pptx_path);
-        let out_pdf = super::normalize_path(out_pdf);
-        let pptx_path = pptx_path.as_str();
-        let out_pdf = out_pdf.as_str();
-
         // CLSIDFromProgID fails immediately if PowerPoint is not registered —
         // gives a clear error before attempting to launch anything.
         let clsid = CLSIDFromProgID(windows::core::w!("PowerPoint.Application")).map_err(|_| {
@@ -133,26 +128,55 @@ mod win_com {
         let app: IDispatch = CoCreateInstance(&clsid, None, CLSCTX_LOCAL_SERVER)
             .map_err(|e| format!("Failed to start PowerPoint: {e}"))?;
 
+        let result = open_and_convert(&app, pptx_path, out_pdf);
+
+        // open_and_convert() already calls Quit() on the success path. On failure,
+        // nothing has closed the Application yet — without this, a cold-started
+        // PowerPoint instance that throws on its first Open call (observed on RDS/
+        // Citrix sessions, where Visible=False is also rejected) is left running as
+        // an orphaned process instead of being torn down.
+        if result.is_err() {
+            if let Err(e) = invoke_void(&app, "Quit", &mut []) {
+                log::warn!("[convert_pptx] Could not quit PowerPoint after failure: {e}");
+            }
+        }
+
+        result
+    }
+
+    unsafe fn open_and_convert(app: &IDispatch, pptx_path: &str, out_pdf: &str) -> Result<(), String> {
+        let pptx_path = super::normalize_path(pptx_path);
+        let out_pdf = super::normalize_path(out_pdf);
+        let pptx_path = pptx_path.as_str();
+        let out_pdf = out_pdf.as_str();
+
         // Suppress PowerPoint UI, alerts, and Protected View before opening any file.
         // These must be set before Presentations.Open to take effect.
         // Visible=False is non-fatal: Remote Desktop sessions and some Windows Server
         // configurations reject it with "Hiding the application window is not allowed".
         // The conversion succeeds regardless; Quit() closes the window when done.
-        if let Err(e) = prop_put(&app, "Visible", make_bool(false)) {
+        if let Err(e) = prop_put(app, "Visible", make_bool(false)) {
             log::warn!("[convert_pptx] Could not hide PowerPoint window (non-fatal): {e}");
         }
-        prop_put(&app, "DisplayAlerts", make_i4(0))?;         // ppAlertsNone = 0
-        prop_put(&app, "AutomationSecurity", make_i4(3))?;    // msoAutomationSecurityForceDisable = 3
+        prop_put(app, "DisplayAlerts", make_i4(0))?;         // ppAlertsNone = 0
+        prop_put(app, "AutomationSecurity", make_i4(3))?;    // msoAutomationSecurityForceDisable = 3
 
         // app.Presentations
-        let presentations = prop_get(&app, "Presentations")?;
+        let presentations = prop_get(app, "Presentations")?;
 
         // Presentations.Open(FileName, ReadOnly=True, Untitled=False, WithWindow=False)
         // COM Invoke args are REVERSED: last parameter is at index 0.
-        // Retry up to 3 times to handle transient COM failures.
-        const MAX_ATTEMPTS: u8 = 3;
+        // Retry with increasing backoff to ride out a cold-started PowerPoint instance:
+        // the first Open call right after CoCreateInstance can throw a transient
+        // DISP_E_EXCEPTION (with no description) while PowerPoint finishes its own
+        // startup — observed in practice taking several seconds longer than the
+        // previous 3×500ms budget allowed for.
+        const RETRY_DELAYS_MS: &[u64] = &[1000, 2000, 3000, 4000];
         let mut pres_result: Result<IDispatch, String> = Err("not attempted".into());
-        for attempt in 0..MAX_ATTEMPTS {
+        for (attempt, delay_ms) in std::iter::once(0).chain(RETRY_DELAYS_MS.iter().copied()).enumerate() {
+            if attempt > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            }
             // Re-create args each retry since BSTR values are owned by the caller
             // and must be freed after each Invoke call.
             let mut open_args = [
@@ -165,12 +189,12 @@ mod win_com {
             clear_variant(&mut open_args[3]); // free FileName BSTR regardless of outcome
             match &pres_result {
                 Ok(_) => break,
-                Err(e) if attempt + 1 < MAX_ATTEMPTS => {
+                Err(e) if attempt < RETRY_DELAYS_MS.len() => {
                     log::warn!(
-                        "[convert_pptx] Open attempt {}/{MAX_ATTEMPTS} failed: {e}",
-                        attempt + 1
+                        "[convert_pptx] Open attempt {}/{} failed: {e}",
+                        attempt + 1,
+                        RETRY_DELAYS_MS.len() + 1
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(500));
                 }
                 Err(_) => break,
             }
@@ -185,7 +209,7 @@ mod win_com {
         invoke_void(&pres, "SaveAs", &mut save_args)?;
 
         invoke_void(&pres, "Close", &mut [])?;
-        invoke_void(&app, "Quit", &mut [])?;
+        invoke_void(app, "Quit", &mut [])?;
 
         for v in save_args.iter_mut() {
             clear_variant(v);
