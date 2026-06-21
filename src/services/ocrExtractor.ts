@@ -2,15 +2,7 @@ import type { PDFPageProxy } from "pdfjs-dist/types/src/display/api";
 import { createWorker, type Worker } from "tesseract.js";
 import type { Rotation } from "../types";
 import { createWorkerPool } from "../utils/workerPool";
-
-/**
- * Tesseract.js workers process one recognize() job at a time each, so a single shared
- * worker serializes all OCR regardless of how many files/pages are processed "concurrently"
- * upstream. A pool lets that many OCR jobs actually run in parallel — sized to match
- * FILE_PROCESSING_CONCURRENCY in useMergeStore.ts so each concurrently-processed file can
- * get its own worker instead of queueing behind one.
- */
-const OCR_WORKER_POOL_SIZE = 3;
+import { loadPerformanceLevel, workerCountForLevel } from "../utils/performanceSettings";
 
 async function createTesseractWorker(): Promise<Worker> {
   const base = window.location.origin + "/tessdata";
@@ -38,7 +30,33 @@ async function createTesseractWorker(): Promise<Worker> {
   ]);
 }
 
-const workerPool = createWorkerPool(OCR_WORKER_POOL_SIZE, createTesseractWorker);
+/**
+ * Tesseract.js workers process one recognize() job at a time each, so a single shared
+ * worker serializes all OCR regardless of how many files/pages are processed "concurrently"
+ * upstream. A pool lets that many OCR jobs actually run in parallel — sized to match the
+ * user's chosen performance level (see useMergeStore.ts's performanceLevel), defaulting to
+ * the persisted level on module load so the pool is correctly sized even before the store
+ * explicitly configures it.
+ */
+let currentPoolSize = workerCountForLevel(loadPerformanceLevel());
+let workerPool = createWorkerPool(currentPoolSize, createTesseractWorker);
+
+/**
+ * Resizes the OCR worker pool. No-op if `size` matches the current size. Idle workers from
+ * the old pool are terminated immediately; workers currently mid-job are not interrupted —
+ * they keep running and release back into their original (now-retired) pool, where they sit
+ * unused until app restart. This is an accepted, rare-case limitation (changing the setting
+ * mid-batch), not handled further to avoid extra complexity.
+ */
+export function configureOcrWorkerPool(size: number): void {
+  if (size === currentPoolSize) return;
+  const oldPool = workerPool;
+  currentPoolSize = size;
+  workerPool = createWorkerPool(size, createTesseractWorker);
+  oldPool.drainIdle().forEach((worker) => {
+    void worker.terminate();
+  });
+}
 
 /**
  * Renders a pdfjs page to canvas and returns the OCR text.
@@ -109,8 +127,10 @@ async function recognizePage(
   }
 
   let worker: Worker;
+  let pool: typeof workerPool;
   try {
-    worker = await workerPool.acquire();
+    pool = workerPool; // capture the pool in use at acquire time
+    worker = await pool.acquire();
     console.info("[ocrPage] worker ready");
   } catch (e) {
     console.error("[ocrPage] worker pool acquire FAILED:", String(e));
@@ -138,7 +158,7 @@ async function recognizePage(
     console.error("[ocrPage] recognize FAILED:", String(e));
     throw e;
   } finally {
-    workerPool.release(worker);
+    pool.release(worker);
   }
 }
 
