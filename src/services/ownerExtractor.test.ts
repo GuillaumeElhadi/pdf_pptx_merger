@@ -715,6 +715,33 @@ describe("extractOwners — format 'Edition par Coproprietaire' (sous-titre apr�
   });
 });
 
+describe("extractOwners — en-tête CARREFOUR PROPERTY GESTION (Siret/Tva/Cartes pro entre la date et le nom)", () => {
+  // Reproduces the real letterhead: Du ... au ... → Siret → Tva Intracommunautaire →
+  // Cartes professionnelles → [nom propriétaire, absent sur les éditions de synthèse] → Garantie ...
+  const letterheadLines = (ownerName?: string) => [
+    textItem("Du 01/01/2025 au 31/12/2025", 600),
+    textItem("Siret 493 123 392 00026", 580),
+    textItem("Tva Intracommunautaire FR05493123392", 560),
+    textItem("Cartes professionnelles T/G : 09.92N897", 540),
+    ...(ownerName ? [textItem(ownerName, 520)] : []),
+    textItem("Garan e Société Générale-29 Bd Haussmann 75009 Paris", 500),
+  ];
+
+  it("ne détecte aucun propriétaire sur une édition de synthèse sans nom après les lignes Siret/Tva/Cartes", async () => {
+    mockDocument([{ width: 595, height: 842, items: letterheadLines() }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([]);
+    expect(result.pageOwners.size).toBe(0);
+  });
+
+  it("détecte le vrai nom du propriétaire situé après les lignes Siret/Tva/Cartes professionnelles", async () => {
+    mockDocument([{ width: 595, height: 842, items: letterheadLines("CARMILA FRANCE") }]);
+    const result = await extractOwners("/doc.pdf");
+    expect(result.owners).toEqual([{ code: "CARMILA FRANCE", name: "CARMILA FRANCE" }]);
+    expect(result.pageOwners.get(1)?.name).toBe("CARMILA FRANCE");
+  });
+});
+
 describe("extractOwners — pageRotationCorrections", () => {
   it("stocke la correction non-zéro dans pageRotationCorrections", async () => {
     vi.mocked(detectPageRotation).mockResolvedValueOnce(90);

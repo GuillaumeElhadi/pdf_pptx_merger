@@ -127,14 +127,33 @@ function matchOwner(orderedLines: string[]): OwnerInfo | null {
     return { code, name: normalizeName(name) };
   }
 
-  // Pattern 2: "Edition par Coproprietaire" — owner appears as subtitle after date range line
+  // Pattern 2: "Edition par Coproprietaire" — owner appears as subtitle after date range line.
+  // The CARREFOUR PROPERTY GESTION letterhead inserts fixed company-identification lines
+  // (Siret, Tva Intracommunautaire, Cartes professionnelles) between the date line and the
+  // actual owner name, ending with a "Garantie ..." line. These boilerplate lines are present
+  // even on documents with no owner (e.g. a global synthesis), so they must be skipped rather
+  // than mistaken for the name — and reaching "Garantie ..." with no name found means this page
+  // has no owner.
+  const HEADER_BOILERPLATE_RE = /^(Siret\b|Tva\b|RCS\b|SAS au capital|Cartes?\s+professionnelles)/i;
+  const HEADER_END_RE = /^Garan/i;
   for (let i = 0; i < orderedLines.length; i++) {
     if (!/^Du\s+\d{2}\/\d{2}\/\d{4}\s+au\s+\d{2}\/\d{2}\/\d{4}/i.test(orderedLines[i])) continue;
 
     let nameLineIndex = i + 1;
-    while (nameLineIndex < orderedLines.length && /^\d/.test(orderedLines[nameLineIndex])) {
-      nameLineIndex++;
+    let reachedHeaderEnd = false;
+    while (nameLineIndex < orderedLines.length) {
+      const candidate = orderedLines[nameLineIndex];
+      if (HEADER_END_RE.test(candidate)) {
+        reachedHeaderEnd = true;
+        break;
+      }
+      if (/^\d/.test(candidate) || HEADER_BOILERPLATE_RE.test(candidate)) {
+        nameLineIndex++;
+        continue;
+      }
+      break;
     }
+    if (reachedHeaderEnd) continue;
 
     const nameLine = orderedLines[nameLineIndex]?.trim();
     if (!nameLine) continue;
