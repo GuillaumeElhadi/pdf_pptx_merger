@@ -22,7 +22,14 @@
       "allow": [{ "path": "**" }]
     },
     "fs:allow-read-dir",
-    "fs:allow-mkdir",
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "$TEMP/pdf_merger_*/**" }]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "$TEMP/pdf_merger_*/**" }]
+    },
     "fs:allow-remove",
     "updater:default",
     "process:default"
